@@ -4,3 +4,7 @@ dist/
 .env.*
 !.env.example
 .vite/
+phase8-summary.pdf
+phase8-transactions.csvgit add .gitignore
+git commit -m "Remove test artifacts from Phase 8 verification"
+git push
