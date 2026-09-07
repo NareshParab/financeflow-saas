@@ -1,9 +1,90 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import {
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth, type AuditLog, type Budget, type ImportResult } from './auth/AuthContext.tsx'
 import { ProtectedRoute } from './auth/ProtectedRoute.tsx'
+import { ThemeProvider, useTheme } from './auth/ThemeContext.tsx'
+import { AppLayout, AuthLayout } from './components/Layout.tsx'
+import {
+  TrendingUp, TrendingDown, DollarSign, AlertTriangle,
+  Upload, FileText, CheckCircle, XCircle, Plus,
+  Download, FileBarChart, BarChart2, ArrowRight,
+  MailWarning, Clock, Shield, Activity, ClipboardList,
+} from 'lucide-react'
+
+// ─── Auth pages ──────────────────────────────────────────────────────────────
+
+function InputField({
+  id, label, type = 'text', value, onChange, placeholder, required, minLength,
+}: {
+  id: string; label: string; type?: string; value: string; onChange: (v: string) => void
+  placeholder?: string; required?: boolean; minLength?: number
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="label">{label}</label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        required={required}
+        minLength={minLength}
+        className="input"
+      />
+    </div>
+  )
+}
+
+function AuthCard({
+  title, subtitle, submitLabel, onSubmit, children, footer, error, loading,
+}: {
+  title: string; subtitle?: string; submitLabel: string
+  onSubmit: (e: React.FormEvent) => void; children: React.ReactNode
+  footer?: React.ReactNode; error?: string; loading?: boolean
+}) {
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="card p-8 shadow-xl"
+    >
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{title}</h1>
+        {subtitle && <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
+      </div>
+
+      <div className="space-y-5">
+        {children}
+      </div>
+
+      {error && (
+        <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+          <XCircle size={16} className="text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      <button
+        type="submit"
+        id={`submit-${submitLabel.toLowerCase().replace(/\s+/g, '-')}`}
+        disabled={loading}
+        className="btn-primary btn-lg w-full mt-6 justify-center"
+      >
+        {loading ? 'Please wait…' : submitLabel}
+        {!loading && <ArrowRight size={16} />}
+      </button>
+
+      {footer && (
+        <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">{footer}</p>
+      )}
+    </form>
+  )
+}
 
 function LoginPage() {
   const { login } = useAuth()
@@ -11,14 +92,93 @@ function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    try { await login(email, password); navigate('/dashboard') } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Unable to log in') }
+    setError(''); setLoading(true)
+    try {
+      await login(email, password)
+      navigate('/dashboard')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to log in')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <AuthForm title="Welcome back" submitLabel="Log in" onSubmit={submit} email={email} password={password} setEmail={setEmail} setPassword={setPassword} error={error} footer={<><Link to="/forgot-password">Forgot password?</Link><span className="mx-2">|</span><span>New here?</span> <Link to="/signup">Create an account</Link></>} />
+    <AuthLayout>
+      <AuthCard
+        title="Welcome back"
+        subtitle="Sign in to your FinanceFlow workspace."
+        submitLabel="Log in"
+        onSubmit={submit}
+        error={error}
+        loading={loading}
+        footer={
+          <>
+            <span>New here? </span>
+            <Link to="/signup" id="go-to-signup" className="font-semibold text-primary-700 dark:text-teal-400 hover:underline">
+              Create an account
+            </Link>
+            <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
+            <Link to="/forgot-password" id="go-to-forgot" className="text-slate-500 dark:text-slate-400 hover:underline">
+              Forgot password?
+            </Link>
+          </>
+        }
+      >
+        <InputField id="email" label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@company.com" required />
+        <InputField id="password" label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" required minLength={8} />
+      </AuthCard>
+    </AuthLayout>
+  )
+}
+
+function SignupPage() {
+  const { signup } = useAuth()
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ email: '', password: '', organizationName: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setError(''); setLoading(true)
+    try {
+      await signup(form)
+      navigate('/dashboard')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to sign up')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <AuthLayout>
+      <AuthCard
+        title="Create your workspace"
+        subtitle="Get started with FinanceFlow for free."
+        submitLabel="Sign up"
+        onSubmit={submit}
+        error={error}
+        loading={loading}
+        footer={
+          <>
+            Already have an account?{' '}
+            <Link to="/login" id="go-to-login" className="font-semibold text-primary-700 dark:text-teal-400 hover:underline">
+              Log in
+            </Link>
+          </>
+        }
+      >
+        <InputField id="org-name" label="Organization name" value={form.organizationName} onChange={(v) => setForm({ ...form, organizationName: v })} placeholder="Acme Corp" required />
+        <InputField id="email" label="Email address" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} placeholder="you@company.com" required />
+        <InputField id="password" label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} placeholder="Min. 8 characters" required minLength={8} />
+      </AuthCard>
+    </AuthLayout>
   )
 }
 
@@ -27,11 +187,46 @@ function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
   async function submit(event: React.FormEvent) {
-    event.preventDefault(); setError('')
-    try { await forgotPassword(email); setMessage('If an account exists for that email, a reset link has been sent.') } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Unable to send reset email') }
+    event.preventDefault()
+    setError(''); setLoading(true)
+    try {
+      await forgotPassword(email)
+      setMessage('If an account exists for that email, a reset link has been sent.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to send reset email')
+    } finally {
+      setLoading(false)
+    }
   }
-  return <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100"><form onSubmit={submit} className="mx-auto max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8"><Link to="/login" className="text-sm text-emerald-400">Back to login</Link><p className="mt-8 text-sm font-semibold uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-3xl font-bold">Reset your password</h1><p className="mt-4 text-slate-400">Enter your email and we will send a reset link if an account exists.</p><label className="mt-8 block text-sm">Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label>{message && <p className="mt-4 text-sm text-emerald-400">{message}</p>}{error && <p className="mt-4 text-sm text-rose-400">{error}</p>}<button className="mt-8 w-full rounded-lg bg-emerald-400 px-4 py-3 font-bold text-slate-950">Send reset link</button></form></main>
+
+  return (
+    <AuthLayout>
+      <AuthCard
+        title="Reset your password"
+        subtitle="Enter your email and we'll send a reset link if an account exists."
+        submitLabel="Send reset link"
+        onSubmit={submit}
+        error={error}
+        loading={loading}
+        footer={
+          <Link to="/login" id="back-to-login" className="font-semibold text-primary-700 dark:text-teal-400 hover:underline">
+            ← Back to login
+          </Link>
+        }
+      >
+        <InputField id="email" label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@company.com" required />
+        {message && (
+          <div className="flex items-start gap-2 rounded-xl border border-teal-200 dark:border-teal-800/60 bg-teal-50 dark:bg-teal-900/20 px-4 py-3">
+            <CheckCircle size={16} className="text-teal-600 dark:text-teal-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-teal-700 dark:text-teal-300">{message}</p>
+          </div>
+        )}
+      </AuthCard>
+    </AuthLayout>
+  )
 }
 
 function ResetPasswordPage() {
@@ -40,23 +235,375 @@ function ResetPasswordPage() {
   const token = new URLSearchParams(window.location.search).get('token') ?? ''
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
   async function submit(event: React.FormEvent) {
-    event.preventDefault(); setError('')
-    try { await resetPassword(token, password); navigate('/login') } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Unable to reset password') }
+    event.preventDefault()
+    setError(''); setLoading(true)
+    try {
+      await resetPassword(token, password)
+      navigate('/login')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to reset password')
+    } finally {
+      setLoading(false)
+    }
   }
-  return <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100"><form onSubmit={submit} className="mx-auto max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8"><p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-3xl font-bold">Choose a new password</h1><label className="mt-8 block text-sm">New password<input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label>{error && <p className="mt-4 text-sm text-rose-400">{error}</p>}<button disabled={!token} className="mt-8 w-full rounded-lg bg-emerald-400 px-4 py-3 font-bold text-slate-950 disabled:opacity-50">Set new password</button></form></main>
+
+  return (
+    <AuthLayout>
+      <AuthCard
+        title="Choose a new password"
+        subtitle="Pick a strong password for your account."
+        submitLabel="Set new password"
+        onSubmit={submit}
+        error={error}
+        loading={loading}
+      >
+        <InputField id="new-password" label="New password" type="password" value={password} onChange={setPassword} placeholder="Min. 8 characters" required minLength={8} />
+        {!token && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+            <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-300">Invalid or missing reset token.</p>
+          </div>
+        )}
+      </AuthCard>
+    </AuthLayout>
+  )
 }
 
-function SignupPage() {
-  const { signup } = useAuth(); const navigate = useNavigate()
-  const [form, setForm] = useState({ email: '', password: '', organizationName: '' }); const [error, setError] = useState('')
-  async function submit(event: React.FormEvent) { event.preventDefault(); try { await signup(form); navigate('/dashboard') } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Unable to sign up') } }
-  return <AuthForm title="Create your workspace" submitLabel="Sign up" onSubmit={submit} email={form.email} password={form.password} setEmail={(email) => setForm({ ...form, email })} setPassword={(password) => setForm({ ...form, password })} organizationName={form.organizationName} setOrganizationName={(organizationName) => setForm({ ...form, organizationName })} error={error} footer={<><span>Already have an account?</span> <Link to="/login">Log in</Link></>} />
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+type SummaryData = { totalIncome: number; totalExpenses: number; net: number }
+type CategoryData = { category: string; total: number }
+type TrendData = { month: string; totalIncome: number; totalExpenses: number; net: number }
+
+function MetricCard({ label, value, icon, tone }: {
+  label: string; value: number; icon: React.ReactNode; tone: 'success' | 'warning' | 'primary'
+}) {
+  const toneClasses = {
+    success: 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20',
+    warning: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20',
+    primary: 'text-primary-700 dark:text-teal-400 bg-primary-50 dark:bg-primary-900/20',
+  }
+  const valueClass = {
+    success: 'text-teal-600 dark:text-teal-400',
+    warning: 'text-amber-600 dark:text-amber-400',
+    primary: value >= 0 ? 'text-primary-700 dark:text-slate-100' : 'text-red-600 dark:text-red-400',
+  }
+
+  return (
+    <div className="card card-hover p-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p>
+          <p className={`mt-2 text-2xl font-bold ${valueClass[tone]}`}>
+            ${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        </div>
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${toneClasses[tone]}`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  )
 }
 
-function AuthForm({ title, submitLabel, onSubmit, email, password, setEmail, setPassword, organizationName, setOrganizationName, error, footer }: { title: string; submitLabel: string; onSubmit: (event: React.FormEvent) => void; email: string; password: string; setEmail: (value: string) => void; setPassword: (value: string) => void; organizationName?: string; setOrganizationName?: (value: string) => void; error: string; footer: React.ReactNode }) {
-  return <main className="min-h-screen bg-slate-950 px-6 py-16 text-slate-100"><form onSubmit={onSubmit} className="mx-auto max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl"><p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-3xl font-bold">{title}</h1>{organizationName !== undefined && <label className="mt-8 block text-sm">Organization name<input required value={organizationName} onChange={(event) => setOrganizationName?.(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label>}<label className="mt-6 block text-sm">Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label><label className="mt-6 block text-sm">Password<input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label>{error && <p className="mt-4 text-sm text-rose-400">{error}</p>}<button className="mt-8 w-full rounded-lg bg-emerald-400 px-4 py-3 font-bold text-slate-950">{submitLabel}</button><p className="mt-6 text-center text-sm text-slate-400">{footer}</p></form></main>
+function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="card p-6">
+      <h2 className="mb-6 text-base font-semibold text-slate-800 dark:text-slate-200">{title}</h2>
+      {children}
+    </div>
+  )
 }
+
+const CHART_COLORS = {
+  income: '#0d9488',
+  expenses: '#f59e0b',
+  net: '#1e3a5f',
+  bar: '#0d9488',
+  grid: 'var(--tw-prose-hr, #e2e8f0)',
+  axis: '#94a3b8',
+  tooltip: {
+    light: { bg: '#fff', border: '#e2e8f0', color: '#1e293b' },
+    dark:  { bg: '#1a2535', border: '#334155', color: '#e2e8f0' },
+  },
+}
+
+function Dashboard() {
+  const { user, fetchAnalytics, downloadFile } = useAuth()
+  const { theme } = useTheme()
+  const [downloadError, setDownloadError] = useState('')
+  const [downloading, setDownloading] = useState('')
+
+  const summary   = useQuery({ queryKey: ['analytics', 'summary'], queryFn: () => fetchAnalytics<SummaryData>('summary') })
+  const categories = useQuery({ queryKey: ['analytics', 'by-category'], queryFn: () => fetchAnalytics<CategoryData[]>('by-category') })
+  const trend     = useQuery({ queryKey: ['analytics', 'trend'], queryFn: () => fetchAnalytics<TrendData[]>('trend') })
+  const isLoading = summary.isLoading || categories.isLoading || trend.isLoading
+  const error     = summary.error ?? categories.error ?? trend.error
+
+  const tooltipStyle = theme === 'dark' ? CHART_COLORS.tooltip.dark : CHART_COLORS.tooltip.light
+
+  async function download(path: string) {
+    setDownloadError(''); setDownloading(path)
+    try { await downloadFile(path) }
+    catch (e) { setDownloadError(e instanceof Error ? e.message : 'Download failed') }
+    finally { setDownloading('') }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Welcome back, <span className="font-medium text-slate-700 dark:text-slate-300">{user?.email}</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            id="download-pdf"
+            onClick={() => void download('/reports/summary-pdf')}
+            disabled={downloading !== ''}
+            className="btn btn-outline"
+          >
+            <FileBarChart size={15} />
+            {downloading === '/reports/summary-pdf' ? 'Generating…' : 'PDF Report'}
+          </button>
+          <button
+            id="export-csv"
+            onClick={() => void download('/transactions/export')}
+            disabled={downloading !== ''}
+            className="btn btn-outline"
+          >
+            <Download size={15} />
+            {downloading === '/transactions/export' ? 'Exporting…' : 'Export CSV'}
+          </button>
+          <Link to="/transactions/import" id="import-transactions-btn" className="btn btn-primary">
+            <Upload size={15} />
+            Import
+          </Link>
+        </div>
+      </div>
+
+      {/* Email verification banner */}
+      {!user?.emailVerifiedAt && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+          <MailWarning size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            Please verify your email address to fully secure your account.
+          </p>
+        </div>
+      )}
+
+      {downloadError && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+          <XCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">{downloadError}</p>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="flex items-center gap-3 py-12 justify-center text-slate-400">
+          <div className="h-5 w-5 border-2 border-slate-300 border-t-primary-700 rounded-full animate-spin" />
+          Loading analytics…
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+          <AlertTriangle size={16} className="text-red-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">
+            Unable to load analytics: {error instanceof Error ? error.message : 'Request failed'}
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !error && summary.data && (
+        <>
+          {/* Metric cards */}
+          <section className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-label="Financial summary">
+            <MetricCard label="Total Income" value={summary.data.totalIncome} icon={<TrendingUp size={20} />} tone="success" />
+            <MetricCard label="Total Expenses" value={summary.data.totalExpenses} icon={<TrendingDown size={20} />} tone="warning" />
+            <MetricCard label="Net Balance" value={summary.data.net} icon={<DollarSign size={20} />} tone="primary" />
+          </section>
+
+          {/* Charts */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6" aria-label="Analytics charts">
+            <ChartPanel title="Spend by Category">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={categories.data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2d3748' : '#e2e8f0'} />
+                  <XAxis dataKey="category" stroke={CHART_COLORS.axis} tick={{ fontSize: 11 }} />
+                  <YAxis stroke={CHART_COLORS.axis} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: tooltipStyle.bg, borderColor: tooltipStyle.border, color: tooltipStyle.color, borderRadius: 8, fontSize: 12 }}
+                  />
+                  <Bar dataKey="total" fill={CHART_COLORS.bar} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartPanel>
+
+            <ChartPanel title="Monthly Trend">
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={trend.data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2d3748' : '#e2e8f0'} />
+                  <XAxis dataKey="month" stroke={CHART_COLORS.axis} tick={{ fontSize: 11 }} />
+                  <YAxis stroke={CHART_COLORS.axis} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: tooltipStyle.bg, borderColor: tooltipStyle.border, color: tooltipStyle.color, borderRadius: 8, fontSize: 12 }}
+                  />
+                  <Legend iconType="circle" iconSize={8} />
+                  <Line type="monotone" dataKey="totalIncome" name="Income" stroke={CHART_COLORS.income} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="totalExpenses" name="Expenses" stroke={CHART_COLORS.expenses} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="net" name="Net" stroke="#6366f1" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartPanel>
+          </section>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Budgets page ─────────────────────────────────────────────────────────────
+
+function BudgetRow({ budget }: { budget: Budget }) {
+  const progressWidth = Math.min(budget.percentUsed, 100)
+  return (
+    <article
+      className={`card card-hover p-5 ${budget.overBudget ? 'border-red-200 dark:border-red-800/60 bg-red-50/30 dark:bg-red-900/10' : ''}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-slate-900 dark:text-slate-100">{budget.category}</h2>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            ${budget.actualSpend.toFixed(2)} of ${budget.monthlyLimit.toFixed(2)} used this month
+          </p>
+        </div>
+        <span className={budget.overBudget ? 'badge badge-danger' : 'badge badge-success'}>
+          {budget.percentUsed.toFixed(0)}% {budget.overBudget ? 'over budget' : 'used'}
+        </span>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${budget.overBudget ? 'bg-red-500' : 'bg-teal-600'}`}
+          style={{ width: `${progressWidth}%` }}
+        />
+      </div>
+    </article>
+  )
+}
+
+function BudgetsPage() {
+  const { fetchBudgets, createBudget } = useAuth()
+  const queryClient = useQueryClient()
+  const [category, setCategory] = useState('')
+  const [monthlyLimit, setMonthlyLimit] = useState('')
+  const [error, setError] = useState('')
+  const budgets = useQuery({ queryKey: ['budgets'], queryFn: fetchBudgets })
+  const create = useMutation({
+    mutationFn: createBudget,
+    onSuccess: () => {
+      setCategory(''); setMonthlyLimit(''); setError('')
+      void queryClient.invalidateQueries({ queryKey: ['budgets'] })
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Unable to create budget'),
+  })
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    const limit = Number(monthlyLimit)
+    if (!category.trim() || !Number.isFinite(limit) || limit <= 0) {
+      setError('Enter a category and a positive monthly limit'); return
+    }
+    create.mutate({ category: category.trim(), monthly_limit: limit })
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Budget Monitoring</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Track current-month transaction activity against category limits.
+        </p>
+      </div>
+
+      {/* Add budget form */}
+      <div className="card p-6">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+          <Plus size={15} /> Add New Budget
+        </h2>
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
+          <div>
+            <label htmlFor="budget-category" className="label">Category</label>
+            <input
+              id="budget-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Software"
+              className="input"
+            />
+          </div>
+          <div>
+            <label htmlFor="budget-limit" className="label">Monthly Limit ($)</label>
+            <input
+              id="budget-limit"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={monthlyLimit}
+              onChange={(e) => setMonthlyLimit(e.target.value)}
+              placeholder="100.00"
+              className="input"
+            />
+          </div>
+          <button
+            id="add-budget-btn"
+            type="submit"
+            disabled={create.isPending}
+            className="btn btn-teal"
+          >
+            <Plus size={15} />
+            {create.isPending ? 'Saving…' : 'Add Budget'}
+          </button>
+          {error && <p className="text-sm text-red-600 dark:text-red-400 sm:col-span-3">{error}</p>}
+        </form>
+      </div>
+
+      {/* Budget list */}
+      {budgets.isLoading && (
+        <div className="flex items-center gap-3 py-8 justify-center text-slate-400">
+          <div className="h-5 w-5 border-2 border-slate-300 border-t-primary-700 rounded-full animate-spin" />
+          Loading budgets…
+        </div>
+      )}
+      {budgets.error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+          <AlertTriangle size={16} className="text-red-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">Unable to load budgets.</p>
+        </div>
+      )}
+
+      <section className="space-y-3" aria-label="Budget list">
+        {budgets.data?.map((budget) => <BudgetRow key={budget.id} budget={budget} />)}
+        {budgets.data?.length === 0 && (
+          <div className="card flex flex-col items-center justify-center gap-3 py-16 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-700/50">
+              <BarChart2 size={22} className="text-slate-400" />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">No budgets yet. Add your first one above.</p>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ─── Import page ──────────────────────────────────────────────────────────────
 
 function ImportPage() {
   const { uploadTransactions } = useAuth()
@@ -69,71 +616,252 @@ function ImportPage() {
     event.preventDefault()
     if (!file) { setError('Choose a CSV file first'); return }
     setError(''); setResult(null); setUploading(true)
-    try { setResult(await uploadTransactions(file)) } catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : 'Unable to import CSV') } finally { setUploading(false) }
+    try { setResult(await uploadTransactions(file)) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Unable to import CSV') }
+    finally { setUploading(false) }
   }
 
-  return <main className="min-h-screen bg-slate-950 p-8 text-slate-100"><div className="mx-auto max-w-3xl"><Link to="/dashboard" className="text-sm text-emerald-400">Back to dashboard</Link><p className="mt-10 text-sm uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-4xl font-bold">Import transactions</h1><p className="mt-4 text-slate-400">Upload a CSV with date, description, amount, and category columns.</p><form onSubmit={submit} className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6"><input type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-400 file:px-4 file:py-2 file:font-bold file:text-slate-950" /><button disabled={uploading} className="mt-6 rounded-lg bg-emerald-400 px-5 py-3 font-bold text-slate-950 disabled:opacity-50">{uploading ? 'Uploading...' : 'Upload CSV'}</button>{error && <p className="mt-4 text-sm text-rose-400">{error}</p>}</form>{result && <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6"><div className="grid grid-cols-2 gap-4 sm:grid-cols-3"><Summary label="Imported" value={result.imported} /><Summary label="Failed" value={result.failed} /></div>{result.errors.length > 0 && <div className="mt-6 space-y-3">{result.errors.map((item) => <div key={`${item.row}-${item.issues.join('-')}`} className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-4 text-sm"><p className="font-semibold text-rose-300">Row {item.row}</p><p className="mt-1 text-rose-200">{item.issues.join('; ')}</p></div>)}</div>}</section>}</div></main>
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Import Transactions</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Upload a CSV with <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">date</code>,{' '}
+          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">description</code>,{' '}
+          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">amount</code>, and{' '}
+          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">category</code> columns.
+        </p>
+      </div>
+
+      <div className="card p-6">
+        <form onSubmit={submit} className="space-y-5">
+          <div>
+            <label htmlFor="csv-file" className="label flex items-center gap-2">
+              <FileText size={14} /> Choose CSV File
+            </label>
+            <div className="mt-1 flex items-center gap-4">
+              <label
+                htmlFor="csv-file"
+                className="btn btn-outline cursor-pointer"
+              >
+                <Upload size={15} />
+                {file ? file.name : 'Browse file…'}
+              </label>
+              <input
+                id="csv-file"
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+              {file && (
+                <span className="text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
+                  {(file.size / 1024).toFixed(1)} KB
+                </span>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+              <XCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
+              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          )}
+
+          <button
+            id="upload-csv-btn"
+            type="submit"
+            disabled={uploading || !file}
+            className="btn btn-teal"
+          >
+            {uploading ? (
+              <>
+                <div className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Uploading…
+              </>
+            ) : (
+              <>
+                <Upload size={15} />
+                Upload CSV
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+
+      {result && (
+        <div className="card p-6 space-y-5 animate-slide-up">
+          <h2 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <CheckCircle size={17} className="text-teal-600 dark:text-teal-400" />
+            Import Complete
+          </h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800/60 p-4">
+              <p className="text-xs font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wide">Imported</p>
+              <p className="mt-1 text-3xl font-bold text-teal-700 dark:text-teal-300">{result.imported}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-700/30 border border-slate-200 dark:border-slate-600/60 p-4">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Failed</p>
+              <p className="mt-1 text-3xl font-bold text-slate-700 dark:text-slate-300">{result.failed}</p>
+            </div>
+          </div>
+
+          {result.errors.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Errors ({result.errors.length})</p>
+              {result.errors.map((item) => (
+                <div
+                  key={`${item.row}-${item.issues.join('-')}`}
+                  className="rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 p-4 text-sm"
+                >
+                  <p className="font-semibold text-red-700 dark:text-red-300">Row {item.row}</p>
+                  <p className="mt-0.5 text-red-600 dark:text-red-400">{item.issues.join('; ')}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
-function Summary({ label, value }: { label: string; value: number }) { return <div className="rounded-lg border border-slate-800 bg-slate-950 p-4"><p className="text-sm text-slate-400">{label}</p><p className="mt-2 text-3xl font-bold">{value}</p></div> }
+// ─── Audit Logs page ──────────────────────────────────────────────────────────
 
-function BudgetsPage() {
-  const { fetchBudgets, createBudget } = useAuth()
-  const queryClient = useQueryClient()
-  const [category, setCategory] = useState('')
-  const [monthlyLimit, setMonthlyLimit] = useState('')
-  const [error, setError] = useState('')
-  const budgets = useQuery({ queryKey: ['budgets'], queryFn: fetchBudgets })
-  const create = useMutation({ mutationFn: createBudget, onSuccess: () => { setCategory(''); setMonthlyLimit(''); setError(''); void queryClient.invalidateQueries({ queryKey: ['budgets'] }) }, onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : 'Unable to create budget') })
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    const limit = Number(monthlyLimit)
-    if (!category.trim() || !Number.isFinite(limit) || limit <= 0) { setError('Enter a category and a positive monthly limit'); return }
-    create.mutate({ category: category.trim(), monthly_limit: limit })
-  }
-
-  return <main className="min-h-screen bg-slate-950 p-8 text-slate-100"><div className="mx-auto max-w-4xl"><Link to="/dashboard" className="text-sm text-emerald-400">Back to dashboard</Link><header className="mt-10"><p className="text-sm uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-4xl font-bold">Budget monitoring</h1><p className="mt-4 text-slate-400">Track current-month transaction activity against category limits.</p></header><form onSubmit={submit} className="mt-8 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-6 sm:grid-cols-[1fr_12rem_auto] sm:items-end"><label className="text-sm">Category<input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Software" className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label><label className="text-sm">Monthly limit<input type="number" min="0.01" step="0.01" value={monthlyLimit} onChange={(event) => setMonthlyLimit(event.target.value)} placeholder="100.00" className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" /></label><button disabled={create.isPending} className="rounded-lg bg-emerald-400 px-4 py-3 font-bold text-slate-950 disabled:opacity-50">{create.isPending ? 'Saving...' : 'Add budget'}</button>{error && <p className="text-sm text-rose-400 sm:col-span-3">{error}</p>}</form>{budgets.isLoading && <p className="mt-8 text-slate-400">Loading budgets...</p>}{budgets.error && <p className="mt-8 text-rose-400">Unable to load budgets.</p>}<section className="mt-8 space-y-4">{budgets.data?.map((budget) => <BudgetRow key={budget.id} budget={budget} />)}{budgets.data?.length === 0 && <p className="rounded-2xl border border-dashed border-slate-700 p-8 text-center text-slate-400">No budgets yet.</p>}</section></div></main>
+function actionIcon(action: string) {
+  if (action.includes('login') || action.includes('auth')) return <Shield size={13} />
+  if (action.includes('import') || action.includes('transaction')) return <Upload size={13} />
+  if (action.includes('budget')) return <BarChart2 size={13} />
+  return <Activity size={13} />
 }
 
-function BudgetRow({ budget }: { budget: Budget }) { const progressWidth = Math.min(budget.percentUsed, 100); return <article className={`rounded-2xl border p-6 ${budget.overBudget ? 'border-rose-900/70 bg-rose-950/20' : 'border-slate-800 bg-slate-900'}`}><div className="flex flex-wrap items-baseline justify-between gap-3"><div><h2 className="text-xl font-semibold">{budget.category}</h2><p className="mt-1 text-sm text-slate-400">${budget.actualSpend.toFixed(2)} of ${budget.monthlyLimit.toFixed(2)} used this month</p></div><p className={`font-bold ${budget.overBudget ? 'text-rose-400' : 'text-emerald-400'}`}>{budget.percentUsed.toFixed(2)}% {budget.overBudget ? 'over budget' : 'used'}</p></div><div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-800"><div className={`h-full rounded-full ${budget.overBudget ? 'bg-rose-400' : 'bg-emerald-400'}`} style={{ width: `${progressWidth}%` }} /></div></article> }
+function AuditRow({ log }: { log: AuditLog }) {
+  return (
+    <tr className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
+      <td className="whitespace-nowrap px-4 py-3.5 text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+        <Clock size={13} className="shrink-0" />
+        {new Date(log.createdAt).toLocaleString()}
+      </td>
+      <td className="px-4 py-3.5">
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-teal-400 text-xs font-bold">
+            {log.userEmail.charAt(0).toUpperCase()}
+          </span>
+          <span className="text-sm text-slate-700 dark:text-slate-300">{log.userEmail}</span>
+        </div>
+      </td>
+      <td className="px-4 py-3.5">
+        <span className="inline-flex items-center gap-1.5 font-mono text-xs bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-teal-400 px-2.5 py-1 rounded-lg">
+          {actionIcon(log.action)}
+          {log.action}
+        </span>
+      </td>
+      <td className="px-4 py-3.5 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">
+        {formatMetadata(log.metadata)}
+      </td>
+    </tr>
+  )
+}
+
+function formatMetadata(metadata: Record<string, unknown> | null) {
+  if (!metadata) return 'No additional details'
+  return Object.entries(metadata).map(([key, value]) => `${key}: ${String(value)}`).join(' | ')
+}
 
 function AuditLogsPage() {
   const { fetchAuditLogs } = useAuth()
   const auditLogs = useQuery({ queryKey: ['audit-logs'], queryFn: fetchAuditLogs })
-  return <main className="min-h-screen bg-slate-950 p-8 text-slate-100"><div className="mx-auto max-w-6xl"><Link to="/dashboard" className="text-sm text-emerald-400">Back to dashboard</Link><header className="mt-10"><p className="text-sm uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-4xl font-bold">Audit logs</h1><p className="mt-4 text-slate-400">Recent activity for your organization.</p></header>{auditLogs.isLoading && <p className="mt-8 text-slate-400">Loading audit logs...</p>}{auditLogs.error && <p className="mt-8 text-rose-400">Unable to load audit logs.</p>}{auditLogs.data && <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-b border-slate-800 text-slate-400"><tr><th className="px-6 py-4 font-medium">Timestamp</th><th className="px-6 py-4 font-medium">User</th><th className="px-6 py-4 font-medium">Action</th><th className="px-6 py-4 font-medium">Summary</th></tr></thead><tbody>{auditLogs.data.map((log) => <AuditRow key={log.id} log={log} />)}</tbody></table>{auditLogs.data.length === 0 && <p className="p-8 text-center text-slate-400">No audit activity yet.</p>}</div>}</div></main>
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Audit Logs</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Recent activity for your organization.
+        </p>
+      </div>
+
+      {auditLogs.isLoading && (
+        <div className="flex items-center gap-3 py-8 justify-center text-slate-400">
+          <div className="h-5 w-5 border-2 border-slate-300 border-t-primary-700 rounded-full animate-spin" />
+          Loading audit logs…
+        </div>
+      )}
+      {auditLogs.error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+          <AlertTriangle size={16} className="text-red-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">Unable to load audit logs.</p>
+        </div>
+      )}
+
+      {auditLogs.data && (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] text-left">
+              <thead className="border-b border-slate-200 dark:border-slate-700">
+                <tr className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  <th className="px-4 py-3">Timestamp</th>
+                  <th className="px-4 py-3">User</th>
+                  <th className="px-4 py-3">Action</th>
+                  <th className="px-4 py-3">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.data.map((log) => <AuditRow key={log.id} log={log} />)}
+              </tbody>
+            </table>
+          </div>
+          {auditLogs.data.length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-700/50">
+                <ClipboardList size={22} className="text-slate-400" />
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">No audit activity yet.</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
-function AuditRow({ log }: { log: AuditLog }) { return <tr className="border-b border-slate-800 last:border-0"><td className="whitespace-nowrap px-6 py-4 text-slate-400">{new Date(log.createdAt).toLocaleString()}</td><td className="px-6 py-4">{log.userEmail}</td><td className="px-6 py-4 font-mono text-emerald-300">{log.action}</td><td className="px-6 py-4 text-slate-300">{formatMetadata(log.metadata)}</td></tr> }
 
-function formatMetadata(metadata: Record<string, unknown> | null) { if (!metadata) return 'No additional details'; return Object.entries(metadata).map(([key, value]) => `${key}: ${String(value)}`).join(' | ') }
 
-type SummaryData = { totalIncome: number; totalExpenses: number; net: number }
-type CategoryData = { category: string; total: number }
-type TrendData = { month: string; totalIncome: number; totalExpenses: number; net: number }
+// ─── Protected wrapper (adds AppLayout) ──────────────────────────────────────
 
-function Dashboard() {
-  const { user, logout, fetchAnalytics, downloadFile } = useAuth()
-  const [downloadError, setDownloadError] = useState('')
-  const [downloading, setDownloading] = useState('')
-  const summary = useQuery({ queryKey: ['analytics', 'summary'], queryFn: () => fetchAnalytics<SummaryData>('summary') })
-  const categories = useQuery({ queryKey: ['analytics', 'by-category'], queryFn: () => fetchAnalytics<CategoryData[]>('by-category') })
-  const trend = useQuery({ queryKey: ['analytics', 'trend'], queryFn: () => fetchAnalytics<TrendData[]>('trend') })
-  const isLoading = summary.isLoading || categories.isLoading || trend.isLoading
-  const error = summary.error ?? categories.error ?? trend.error
-
-  async function download(path: string) {
-    setDownloadError(''); setDownloading(path)
-    try { await downloadFile(path) } catch (downloadError) { setDownloadError(downloadError instanceof Error ? downloadError.message : 'Download failed') } finally { setDownloading('') }
-  }
-
-  return <main className="min-h-screen bg-slate-950 p-8 text-slate-100"><div className="mx-auto max-w-6xl"><header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm uppercase tracking-[0.3em] text-emerald-400">FinanceFlow</p><h1 className="mt-4 text-4xl font-bold">Your dashboard</h1><p className="mt-4 text-slate-400">Signed in as {user?.email} ({user?.role}).</p></div><div className="flex flex-wrap gap-3"><Link to="/budgets" className="rounded-lg border border-emerald-400 px-4 py-2 text-emerald-300">Budgets</Link><Link to="/audit-logs" className="rounded-lg border border-slate-600 px-4 py-2 text-slate-300">Audit logs</Link><Link to="/transactions/import" className="rounded-lg bg-emerald-400 px-4 py-2 font-bold text-slate-950">Import transactions</Link><button onClick={() => void download('/reports/summary-pdf')} disabled={downloading !== ''} className="rounded-lg border border-sky-400 px-4 py-2 text-sky-300 disabled:opacity-50">{downloading === '/reports/summary-pdf' ? 'Generating...' : 'Download PDF Report'}</button><button onClick={() => void download('/transactions/export')} disabled={downloading !== ''} className="rounded-lg border border-slate-600 px-4 py-2 text-slate-300 disabled:opacity-50">{downloading === '/transactions/export' ? 'Exporting...' : 'Export Transactions CSV'}</button><button onClick={() => void logout()} className="rounded-lg border border-slate-700 px-4 py-2">Log out</button></div></header>{!user?.emailVerifiedAt && <p className="mt-6 rounded-lg border border-amber-700 bg-amber-950/30 p-4 text-amber-200">Please verify your email address to secure your account.</p>}{downloadError && <p className="mt-4 text-rose-400">{downloadError}</p>}{isLoading && <p className="mt-10 text-slate-400">Loading analytics...</p>}{error && <p className="mt-10 text-rose-400">Unable to load analytics: {error instanceof Error ? error.message : 'Request failed'}</p>}{!isLoading && !error && summary.data && <><section className="mt-10 grid gap-4 sm:grid-cols-3"><MetricCard label="Total income" value={summary.data.totalIncome} tone="text-emerald-400" /><MetricCard label="Total expenses" value={summary.data.totalExpenses} tone="text-amber-300" /><MetricCard label="Net" value={summary.data.net} tone={summary.data.net >= 0 ? 'text-sky-300' : 'text-rose-400'} /></section><section className="mt-6 grid gap-6 lg:grid-cols-2"><ChartPanel title="Spend by category"><ResponsiveContainer width="100%" height={300}><BarChart data={categories.data}><CartesianGrid strokeDasharray="3 3" stroke="#334155" /><XAxis dataKey="category" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} /><Bar dataKey="total" fill="#34d399" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></ChartPanel><ChartPanel title="Monthly trend"><ResponsiveContainer width="100%" height={300}><LineChart data={trend.data}><CartesianGrid strokeDasharray="3 3" stroke="#334155" /><XAxis dataKey="month" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} /><Legend /><Line type="monotone" dataKey="totalIncome" name="Income" stroke="#34d399" strokeWidth={2} /><Line type="monotone" dataKey="totalExpenses" name="Expenses" stroke="#fbbf24" strokeWidth={2} /><Line type="monotone" dataKey="net" name="Net" stroke="#7dd3fc" strokeWidth={2} /></LineChart></ResponsiveContainer></ChartPanel></section></>}</div></main>
+function ProtectedWithLayout() {
+  return (
+    <ProtectedRoute>
+      <AppLayout>
+        <Routes>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/budgets" element={<BudgetsPage />} />
+          <Route path="/transactions/import" element={<ImportPage />} />
+          <Route path="/audit-logs" element={<AuditLogsPage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AppLayout>
+    </ProtectedRoute>
+  )
 }
 
-function MetricCard({ label, value, tone }: { label: string; value: number; tone: string }) { return <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6"><p className="text-sm text-slate-400">{label}</p><p className={`mt-3 text-3xl font-bold ${tone}`}>{value.toFixed(2)}</p></div> }
+// ─── App root ─────────────────────────────────────────────────────────────────
 
-function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6"><h2 className="mb-6 text-xl font-semibold">{title}</h2>{children}</section> }
-
-function App() { return <BrowserRouter><Routes><Route path="/login" element={<LoginPage />} /><Route path="/signup" element={<SignupPage />} /><Route path="/forgot-password" element={<ForgotPasswordPage />} /><Route path="/reset-password" element={<ResetPasswordPage />} /><Route element={<ProtectedRoute />}><Route path="/dashboard" element={<Dashboard />} /><Route path="/budgets" element={<BudgetsPage />} /><Route path="/audit-logs" element={<AuditLogsPage />} /><Route path="/transactions/import" element={<ImportPage />} /></Route><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></BrowserRouter> }
+function App() {
+  return (
+    <ThemeProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/*" element={<ProtectedWithLayout />} />
+        </Routes>
+      </BrowserRouter>
+    </ThemeProvider>
+  )
+}
 
 export default App
