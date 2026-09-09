@@ -1,7 +1,9 @@
 import rateLimit from 'express-rate-limit'
 
+export const AUTH_RATE_LIMIT_WINDOW_MS = 2 * 60 * 60 * 1000
+
 export const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
   limit: 10,
   standardHeaders: 'draft-8',
   legacyHeaders: false,

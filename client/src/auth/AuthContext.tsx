@@ -5,7 +5,7 @@ type SignupInput = { email: string; password: string; organizationName: string }
 export type ImportResult = { imported: number; failed: number; errors: Array<{ row: number; issues: string[]; values?: Record<string, unknown> }> }
 export type Budget = { id: number; category: string; monthlyLimit: number; actualSpend: number; overBudget: boolean; percentUsed: number; createdAt: string }
 export type AuditLog = { id: number; organizationId: number; userId: number; userEmail: string; action: string; entityType: string; entityId: number | null; metadata: Record<string, unknown> | null; createdAt: string }
-type AuthContextValue = { user: User | null; accessToken: string | null; loading: boolean; login: (email: string, password: string) => Promise<void>; signup: (input: SignupInput) => Promise<void>; forgotPassword: (email: string) => Promise<void>; resetPassword: (token: string, password: string) => Promise<void>; uploadTransactions: (file: File) => Promise<ImportResult>; fetchAnalytics: <T>(path: string) => Promise<T>; fetchBudgets: () => Promise<Budget[]>; createBudget: (input: { category: string; monthly_limit: number }) => Promise<Budget>; fetchAuditLogs: () => Promise<AuditLog[]>; downloadFile: (path: string) => Promise<void>; logout: () => Promise<void> }
+type AuthContextValue = { user: User | null; accessToken: string | null; loading: boolean; login: (email: string, password: string) => Promise<void>; signup: (input: SignupInput) => Promise<void>; forgotPassword: (email: string) => Promise<void>; resetPassword: (token: string, password: string) => Promise<void>; resendVerification: () => Promise<string>; verifyEmail: (token: string) => Promise<void>; uploadTransactions: (file: File) => Promise<ImportResult>; fetchAnalytics: <T>(path: string) => Promise<T>; fetchBudgets: () => Promise<Budget[]>; createBudget: (input: { category: string; monthly_limit: number }) => Promise<Budget>; fetchAuditLogs: () => Promise<AuditLog[]>; downloadFile: (path: string) => Promise<void>; logout: () => Promise<void> }
 const AuthContext = createContext<AuthContextValue | null>(null)
 const API_URL = 'http://localhost:5000/api'
 
@@ -18,6 +18,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function authenticate(path: string, body: object) { const data = await request(path, { method: 'POST', body: JSON.stringify(body) }); setAccessToken(data.accessToken); await loadUser(data.accessToken) }
   async function forgotPassword(email: string) { await request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }) }
   async function resetPassword(token: string, password: string) { await request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }) }
+  async function resendVerification() { const data = await request('/auth/resend-verification', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } }); return data.message as string }
+  async function verifyEmail(token: string) { await request(`/auth/verify-email?token=${encodeURIComponent(token)}`); if (accessToken) await loadUser(accessToken) }
   async function uploadTransactions(file: File) { const formData = new FormData(); formData.append('file', file); return request('/transactions/import', { method: 'POST', body: formData, headers: { Authorization: `Bearer ${accessToken}` } }) as Promise<ImportResult> }
   async function fetchAnalytics<T>(path: string) { return request(`/analytics/${path}`, { headers: { Authorization: `Bearer ${accessToken}` } }) as Promise<T> }
   async function fetchBudgets() { return request('/budgets', { headers: { Authorization: `Bearer ${accessToken}` } }) as Promise<Budget[]> }
@@ -41,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await request('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => undefined)
     setAccessToken(null); setUser(null)
   }
-  return <AuthContext.Provider value={{ user, accessToken, loading, login: (email, password) => authenticate('/auth/login', { email, password }), signup: (input) => authenticate('/auth/signup', input), forgotPassword, resetPassword, uploadTransactions, fetchAnalytics, fetchBudgets, createBudget, fetchAuditLogs, downloadFile, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, accessToken, loading, login: (email, password) => authenticate('/auth/login', { email, password }), signup: (input) => authenticate('/auth/signup', input), forgotPassword, resetPassword, resendVerification, verifyEmail, uploadTransactions, fetchAnalytics, fetchBudgets, createBudget, fetchAuditLogs, downloadFile, logout }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() { const context = useContext(AuthContext); if (!context) throw new Error('useAuth must be used within AuthProvider'); return context }

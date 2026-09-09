@@ -53,6 +53,22 @@ const transactionRowSchema = z.object({
   category: z.string().trim().min(1, 'Category must not be empty'),
 })
 
+router.get('/import-template', requireAuth, (_request, response) => {
+  // Three example rows: income (positive), two expenses (negative)
+  // These rows are intentionally valid so a user can upload them as-is to test the import flow
+  const csv = Papa.unparse(
+    [
+      { date: '2025-01-15', description: 'Salary payment', amount: 3500, category: 'Income' },
+      { date: '2025-01-18', description: 'Grocery shopping', amount: -87.5, category: 'Food' },
+      { date: '2025-01-20', description: 'Monthly rent', amount: -1200, category: 'Housing' },
+    ],
+    { columns: ['date', 'description', 'amount', 'category'] },
+  )
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', 'attachment; filename="financeflow-import-template.csv"')
+  response.send(csv)
+})
+
 router.post('/import', requireAuth, uploadCsv, async (request, response) => {
   if (!request.file) {
     response.status(400).json({ imported: 0, failed: 0, errors: [{ row: 0, issues: ['A CSV file is required'] }] })

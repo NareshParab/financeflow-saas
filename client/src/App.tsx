@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
@@ -272,6 +272,39 @@ function ResetPasswordPage() {
   )
 }
 
+function VerifyEmailPage() {
+  const { verifyEmail } = useAuth()
+  const navigate = useNavigate()
+  const token = new URLSearchParams(window.location.search).get('token') ?? ''
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!token) {
+      setError('Invalid or missing verification token.')
+      return
+    }
+    verifyEmail(token)
+      .then(() => navigate('/dashboard'))
+      .catch((verificationError) => setError(verificationError instanceof Error ? verificationError.message : 'Unable to verify email'))
+  }, [navigate, token, verifyEmail])
+
+  return (
+    <AuthLayout>
+      <div className="card p-8 text-center shadow-xl">
+        {error ? (
+          <>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Verification failed</h1>
+            <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
+            <Link to="/dashboard" className="btn btn-primary mt-6">Return to dashboard</Link>
+          </>
+        ) : (
+          <p className="text-slate-600 dark:text-slate-300">Verifying your email…</p>
+        )}
+      </div>
+    </AuthLayout>
+  )
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 type SummaryData = { totalIncome: number; totalExpenses: number; net: number }
@@ -332,10 +365,13 @@ const CHART_COLORS = {
 }
 
 function Dashboard() {
-  const { user, fetchAnalytics, downloadFile } = useAuth()
+  const { user, fetchAnalytics, downloadFile, resendVerification } = useAuth()
   const { theme } = useTheme()
   const [downloadError, setDownloadError] = useState('')
   const [downloading, setDownloading] = useState('')
+  const [verificationMessage, setVerificationMessage] = useState('')
+  const [verificationError, setVerificationError] = useState('')
+  const [resendingVerification, setResendingVerification] = useState(false)
 
   const summary   = useQuery({ queryKey: ['analytics', 'summary'], queryFn: () => fetchAnalytics<SummaryData>('summary') })
   const categories = useQuery({ queryKey: ['analytics', 'by-category'], queryFn: () => fetchAnalytics<CategoryData[]>('by-category') })
@@ -350,6 +386,13 @@ function Dashboard() {
     try { await downloadFile(path) }
     catch (e) { setDownloadError(e instanceof Error ? e.message : 'Download failed') }
     finally { setDownloading('') }
+  }
+
+  async function resend() {
+    setVerificationMessage(''); setVerificationError(''); setResendingVerification(true)
+    try { setVerificationMessage(await resendVerification()) }
+    catch (error) { setVerificationError(error instanceof Error ? error.message : 'Unable to resend verification email') }
+    finally { setResendingVerification(false) }
   }
 
   return (
@@ -394,6 +437,11 @@ function Dashboard() {
           <MailWarning size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <p className="text-sm text-amber-700 dark:text-amber-300">
             Please verify your email address to fully secure your account.
+            <button type="button" onClick={() => void resend()} disabled={resendingVerification} className="ml-2 font-semibold underline hover:no-underline disabled:opacity-60">
+              {resendingVerification ? 'Sending…' : 'Resend verification email'}
+            </button>
+            {verificationMessage && <span className="ml-2">{verificationMessage}</span>}
+            {verificationError && <span className="ml-2 text-red-700 dark:text-red-300">{verificationError}</span>}
           </p>
         </div>
       )}
@@ -606,11 +654,12 @@ function BudgetsPage() {
 // ─── Import page ──────────────────────────────────────────────────────────────
 
 function ImportPage() {
-  const { uploadTransactions } = useAuth()
+  const { uploadTransactions, downloadFile } = useAuth()
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -621,15 +670,43 @@ function ImportPage() {
     finally { setUploading(false) }
   }
 
+  async function handleDownloadTemplate() {
+    setDownloading(true)
+    try { await downloadFile('/transactions/import-template') }
+    catch { /* silently ignore — browser already gets a file or nothing */ }
+    finally { setDownloading(false) }
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Import Transactions</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Upload a CSV with <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">date</code>,{' '}
-          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">description</code>,{' '}
-          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">amount</code>, and{' '}
-          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">category</code> columns.
+          Upload a CSV file to bulk-import transactions into your account.
+        </p>
+      </div>
+
+      {/* Format guide */}
+      <div className="rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50 dark:bg-blue-900/20 p-4 space-y-3">
+        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-2">
+          <FileText size={14} />
+          Required CSV format
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { col: 'date', desc: 'ISO date, e.g. 2025-01-15' },
+            { col: 'description', desc: 'Transaction label' },
+            { col: 'amount', desc: 'Positive = income, negative = expense' },
+            { col: 'category', desc: 'e.g. Food, Housing, Income' },
+          ].map(({ col, desc }) => (
+            <div key={col} className="rounded-lg bg-white dark:bg-slate-800 border border-blue-100 dark:border-blue-800/40 p-2.5">
+              <code className="text-xs font-bold text-blue-700 dark:text-blue-400">{col}</code>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-snug">{desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-blue-700 dark:text-blue-400">
+          <span className="font-semibold">Sign convention:</span> use a <span className="font-semibold">positive</span> amount for income (e.g. <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">3500</code>) and a <span className="font-semibold">negative</span> amount for expenses (e.g. <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">-87.50</code>). The first row must be the header row exactly as shown above.
         </p>
       </div>
 
@@ -639,7 +716,7 @@ function ImportPage() {
             <label htmlFor="csv-file" className="label flex items-center gap-2">
               <FileText size={14} /> Choose CSV File
             </label>
-            <div className="mt-1 flex items-center gap-4">
+            <div className="mt-1 flex flex-wrap items-center gap-3">
               <label
                 htmlFor="csv-file"
                 className="btn btn-outline cursor-pointer"
@@ -659,7 +736,20 @@ function ImportPage() {
                   {(file.size / 1024).toFixed(1)} KB
                 </span>
               )}
+              <button
+                id="download-import-template"
+                type="button"
+                disabled={downloading}
+                onClick={handleDownloadTemplate}
+                className="btn btn-outline text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+              >
+                <Download size={15} />
+                {downloading ? 'Downloading…' : 'Download template'}
+              </button>
             </div>
+            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+              Don't have a file yet? Download the template above — it includes the correct column headers and example rows you can fill in.
+            </p>
           </div>
 
           {error && (
@@ -857,6 +947,7 @@ function App() {
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/*" element={<ProtectedWithLayout />} />
         </Routes>
       </BrowserRouter>

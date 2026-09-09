@@ -141,6 +141,34 @@ router.post('/forgot-password', authRateLimit, async (request, response) => {
   response.json({ message: 'If an account exists for that email, a password reset link has been sent.' })
 })
 
+router.post('/resend-verification', requireAuth, async (request, response) => {
+  const user = await db.query.users.findFirst({ where: eq(users.id, request.user!.userId) })
+  if (!user) {
+    response.status(404).json({ error: 'User not found' })
+    return
+  }
+  if (user.emailVerifiedAt) {
+    response.json({ message: 'Your email is already verified.' })
+    return
+  }
+
+  const verificationToken = createRecoveryToken()
+  await db.insert(emailVerificationTokens).values({
+    userId: user.id,
+    tokenHash: hashRecoveryToken(verificationToken),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  })
+  try {
+    const messageId = await sendVerificationEmail(user.email, verificationToken)
+    logger.info({ messageId, userId: user.id }, 'verification email resent')
+  } catch (mailError) {
+    logger.error({ err: mailError, userId: user.id }, 'failed to resend verification email')
+    response.status(502).json({ error: 'Unable to send verification email' })
+    return
+  }
+  response.json({ message: 'A new verification email has been sent.' })
+})
+
 router.post('/reset-password', authRateLimit, async (request, response) => {
   const parsed = resetPasswordSchema.safeParse(request.body)
   if (!parsed.success) {

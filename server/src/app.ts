@@ -1,3 +1,5 @@
+import dotenv from 'dotenv'
+import path from 'node:path'
 import cors from 'cors'
 import express from 'express'
 import { sql } from 'drizzle-orm'
@@ -11,9 +13,19 @@ import syncRouter from './routes/sync'
 import transactionsRouter from './routes/transactions'
 import reportsRouter from './routes/reports'
 
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
+
 export const app = express()
 
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }))
+const trustProxy = process.env.TRUST_PROXY?.trim().toLowerCase() === 'true'
+app.set('trust proxy', trustProxy)
+
+const allowedOrigins = (process.env.CLIENT_URL ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+app.use(cors({ origin: allowedOrigins, credentials: true }))
 app.use(requestLogger)
 app.use(express.json())
 
