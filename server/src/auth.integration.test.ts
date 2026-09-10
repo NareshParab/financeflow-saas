@@ -231,6 +231,50 @@ describe('FinanceFlow integration API', () => {
     expect(deleteAudit?.metadata).toMatchObject({ deleted: { description: 'To be removed', amount: -12, category: 'Temporary' } })
   })
 
+  it('suggests duplicate transaction combinations and filters marked recurring rows', async () => {
+    const user = await createTestUser('recurring')
+    const [first] = await db.insert(transactions).values({
+      organizationId: user.organizationId,
+      date: '2026-09-01',
+      description: 'Coworking space rent',
+      amount: '-300.00',
+      category: 'Workspace',
+    }).returning()
+    await db.insert(transactions).values({
+      organizationId: user.organizationId,
+      date: '2026-10-01',
+      description: 'Coworking space rent',
+      amount: '-300.00',
+      category: 'Workspace',
+    })
+
+    const beforeMark = await http.get('/api/transactions').set('Authorization', `Bearer ${user.accessToken}`)
+    expect(beforeMark.body.rows.filter((row: { description: string }) => row.description === 'Coworking space rent')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ is_recurring: false, suggestedRecurring: true }),
+      ]),
+    )
+
+    const marked = await http
+      .patch(`/api/transactions/${first.id}`)
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .send({ is_recurring: true })
+    expect(marked.status).toBe(200)
+    expect(marked.body.is_recurring).toBe(true)
+
+    const filtered = await http.get('/api/transactions?recurringOnly=true').set('Authorization', `Bearer ${user.accessToken}`)
+    expect(filtered.body.total).toBe(1)
+    expect(filtered.body.rows).toEqual([expect.objectContaining({ id: first.id, is_recurring: true })])
+
+    const refreshed = await http.get('/api/transactions').set('Authorization', `Bearer ${user.accessToken}`)
+    expect(refreshed.body.rows.find((row: { id: number }) => row.id === first.id)).toMatchObject({ is_recurring: true, suggestedRecurring: true })
+    const audit = await db.select().from(auditLogs).where(eq(auditLogs.organizationId, user.organizationId))
+    expect(audit.find((log) => log.action === 'transaction.update')?.metadata).toMatchObject({
+      changes: { is_recurring: true },
+      recurringFlagChange: { from: false, to: true },
+    })
+  })
+
   it('calculates budget spending and over-budget state from current-month transactions', async () => {
     const user = await createTestUser('budget')
     const today = new Date().toISOString().slice(0, 10)

@@ -5,9 +5,9 @@ type SignupInput = { email: string; password: string; organizationName: string }
 export type ImportResult = { imported: number; failed: number; errors: Array<{ row: number; issues: string[]; values?: Record<string, unknown> }> }
 export type Budget = { id: number; category: string; monthlyLimit: number; actualSpend: number; overBudget: boolean; percentUsed: number; createdAt: string }
 export type AuditLog = { id: number; organizationId: number; userId: number; userEmail: string; action: string; entityType: string; entityId: number | null; metadata: Record<string, unknown> | null; createdAt: string }
-export type Transaction = { id: number; date: string; description: string; amount: number; category: string }
+export type Transaction = { id: number; date: string; description: string; amount: number; category: string; is_recurring: boolean; suggestedRecurring: boolean }
 export type TransactionList = { rows: Transaction[]; total: number; page: number; limit: number; totalPages: number }
-export type TransactionInput = { date: string; description: string; amount: number; category: string }
+export type TransactionInput = { date: string; description: string; amount: number; category: string; is_recurring?: boolean }
 type AuthContextValue = { user: User | null; accessToken: string | null; loading: boolean; login: (email: string, password: string) => Promise<void>; signup: (input: SignupInput) => Promise<void>; forgotPassword: (email: string) => Promise<void>; resetPassword: (token: string, password: string) => Promise<void>; resendVerification: () => Promise<string>; verifyEmail: (token: string) => Promise<void>; uploadTransactions: (file: File) => Promise<ImportResult>; fetchAnalytics: <T>(path: string) => Promise<T>; fetchTransactions: (query: string) => Promise<TransactionList>; updateTransaction: (id: number, input: Partial<TransactionInput>) => Promise<Transaction>; deleteTransaction: (id: number) => Promise<void>; fetchBudgets: () => Promise<Budget[]>; createBudget: (input: { category: string; monthly_limit: number }) => Promise<Budget>; fetchAuditLogs: () => Promise<AuditLog[]>; downloadFile: (path: string) => Promise<void>; logout: () => Promise<void> }
 const AuthContext = createContext<AuthContextValue | null>(null)
 const API_URL = 'http://localhost:5000/api'

@@ -1,4 +1,4 @@
-import { date, index, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
+import { boolean, date, index, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const healthChecks = pgTable('health_checks', {
   id: serial('id').primaryKey(),
@@ -93,6 +93,7 @@ export const transactions = pgTable(
     description: text('description').notNull(),
     amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
     category: text('category').notNull(),
+    isRecurring: boolean('is_recurring').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

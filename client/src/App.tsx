@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
-import { useAuth, type AuditLog, type Budget, type ImportResult, type Transaction } from './auth/AuthContext.tsx'
+import { useAuth, type AuditLog, type Budget, type ImportResult, type Transaction, type TransactionInput } from './auth/AuthContext.tsx'
 import { ProtectedRoute } from './auth/ProtectedRoute.tsx'
 import { ThemeProvider, useTheme } from './auth/ThemeContext.tsx'
 import { AppLayout, AuthLayout } from './components/Layout.tsx'
@@ -13,7 +13,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Upload, FileText, CheckCircle, XCircle, Plus,
   Download, FileBarChart, BarChart2, ArrowRight,
-  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, Save, X,
+  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, Save, X, Repeat, Lightbulb,
 } from 'lucide-react'
 
 // ─── Auth pages ──────────────────────────────────────────────────────────────
@@ -893,6 +893,7 @@ function TransactionsPage() {
   const [category, setCategory] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [recurringOnly, setRecurringOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
@@ -913,6 +914,7 @@ function TransactionsPage() {
   if (category) query.set('category', category)
   if (startDate) query.set('startDate', startDate)
   if (endDate) query.set('endDate', endDate)
+  if (recurringOnly) query.set('recurringOnly', 'true')
 
   const transactions = useQuery({
     queryKey: ['transactions', query.toString()],
@@ -923,12 +925,16 @@ function TransactionsPage() {
     queryFn: () => fetchAnalytics<CategoryData[]>('by-category'),
   })
   const update = useMutation({
-    mutationFn: ({ id, input }: { id: number; input: { date: string; description: string; amount: number; category: string } }) => updateTransaction(id, input),
+    mutationFn: ({ id, input }: { id: number; input: TransactionInput }) => updateTransaction(id, input),
     onSuccess: () => {
       setEditing(null)
       void queryClient.invalidateQueries({ queryKey: ['transactions'] })
       void queryClient.invalidateQueries({ queryKey: ['analytics'] })
     },
+  })
+  const recurring = useMutation({
+    mutationFn: ({ id, is_recurring }: { id: number; is_recurring: boolean }) => updateTransaction(id, { is_recurring }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['transactions'] }),
   })
   const remove = useMutation({
     mutationFn: deleteTransaction,
@@ -956,6 +962,7 @@ function TransactionsPage() {
     setCategory('')
     setStartDate('')
     setEndDate('')
+    setRecurringOnly(false)
     setPage(1)
   }
 
@@ -1006,6 +1013,10 @@ function TransactionsPage() {
             <label htmlFor="transaction-end-date" className="label">To date</label>
             <input id="transaction-end-date" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setPage(1) }} className="input" />
           </div>
+          <label className="flex items-center gap-2 pb-2 text-sm text-slate-600 dark:text-slate-300">
+            <input type="checkbox" checked={recurringOnly} onChange={(event) => { setRecurringOnly(event.target.checked); setPage(1) }} />
+            Show only recurring
+          </label>
           <button type="button" onClick={resetFilters} className="btn btn-ghost justify-center">Clear</button>
         </div>
       </div>
@@ -1027,6 +1038,7 @@ function TransactionsPage() {
                   <th className="px-5 py-3">Description</th>
                   <th className="px-5 py-3"><button type="button" onClick={() => toggleSort('amount')} className="inline-flex items-center gap-1.5 hover:text-primary-700 dark:hover:text-teal-400">Amount {sortIcon('amount')}</button></th>
                   <th className="px-5 py-3">Category</th>
+                  <th className="px-5 py-3">Recurring</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1037,6 +1049,11 @@ function TransactionsPage() {
                     <td className="px-5 py-4 text-sm font-medium text-slate-800 dark:text-slate-200">{transaction.description}</td>
                     <td className={`whitespace-nowrap px-5 py-4 text-sm font-semibold ${transaction.amount >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300'}`}>{transaction.amount >= 0 ? '+' : ''}${transaction.amount.toFixed(2)}</td>
                     <td className="px-5 py-4"><span className="badge badge-neutral">{transaction.category}</span></td>
+                    <td className="px-5 py-4">
+                      <button type="button" onClick={() => recurring.mutate({ id: transaction.id, is_recurring: !transaction.is_recurring })} aria-label={`${transaction.is_recurring ? 'Unmark' : 'Mark'} ${transaction.description} as recurring`} title={transaction.is_recurring ? 'Unmark recurring' : transaction.suggestedRecurring ? 'Mark as recurring (suggested)' : 'Mark as recurring'} className={`btn btn-ghost btn-icon btn-sm ${transaction.is_recurring ? 'text-primary-700 dark:text-teal-400' : transaction.suggestedRecurring ? 'text-slate-400 dark:text-slate-500' : 'text-slate-300 dark:text-slate-600'}`} disabled={recurring.isPending}>
+                        {transaction.suggestedRecurring && !transaction.is_recurring ? <Lightbulb size={15} /> : <Repeat size={15} />}
+                      </button>
+                    </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex justify-end gap-1">
                         <button type="button" onClick={() => openEdit(transaction)} aria-label={`Edit ${transaction.description}`} title="Edit transaction" className="btn btn-ghost btn-icon btn-sm"><Pencil size={15} /></button>

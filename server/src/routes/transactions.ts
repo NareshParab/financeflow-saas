@@ -1,6 +1,6 @@
 import multer, { MulterError } from 'multer'
 import Papa from 'papaparse'
-import { and, asc, count, desc, eq, gte, ilike, lte } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm'
 import { Router } from 'express'
 import { z } from 'zod'
 import { db } from '../db/client'
@@ -53,7 +53,7 @@ const transactionRowSchema = z.object({
   category: z.string().trim().min(1, 'Category must not be empty'),
 })
 
-const transactionUpdateSchema = transactionRowSchema.partial().refine((value) => Object.keys(value).length > 0, 'At least one transaction field is required')
+const transactionUpdateSchema = transactionRowSchema.partial().extend({ is_recurring: z.boolean().optional() }).refine((value) => Object.keys(value).length > 0, 'At least one transaction field is required')
 
 const transactionListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -62,6 +62,7 @@ const transactionListQuerySchema = z.object({
   category: z.string().trim().optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'startDate must use YYYY-MM-DD').optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'endDate must use YYYY-MM-DD').optional(),
+  recurringOnly: z.preprocess((value) => value === true || value === 'true', z.boolean()).default(false),
   sortBy: z.enum(['date', 'amount']).default('date'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 })
@@ -73,30 +74,38 @@ router.get('/', requireAuth, async (request, response) => {
     return
   }
 
-  const { page, limit, search, category, startDate, endDate, sortBy, sortOrder } = parsedQuery.data
+  const { page, limit, search, category, startDate, endDate, recurringOnly, sortBy, sortOrder } = parsedQuery.data
   const organizationId = request.user!.organizationId
   const conditions = [eq(transactions.organizationId, organizationId)]
   if (search) conditions.push(ilike(transactions.description, `%${search}%`))
   if (category) conditions.push(eq(transactions.category, category))
   if (startDate) conditions.push(gte(transactions.date, startDate))
   if (endDate) conditions.push(lte(transactions.date, endDate))
+  if (recurringOnly) conditions.push(eq(transactions.isRecurring, true))
   const where = and(...conditions)
   const sortColumn = sortBy === 'amount' ? transactions.amount : transactions.date
   const order = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
 
-  const [rows, [{ total }]] = await Promise.all([
+  const [rows, [{ total }], duplicateCombinations] = await Promise.all([
     db
-      .select({ id: transactions.id, date: transactions.date, description: transactions.description, amount: transactions.amount, category: transactions.category })
+      .select({ id: transactions.id, date: transactions.date, description: transactions.description, amount: transactions.amount, category: transactions.category, isRecurring: transactions.isRecurring })
       .from(transactions)
       .where(where)
       .orderBy(order, sortOrder === 'asc' ? asc(transactions.id) : desc(transactions.id))
       .limit(limit)
       .offset((page - 1) * limit),
     db.select({ total: count() }).from(transactions).where(where),
+    db
+      .select({ description: transactions.description, category: transactions.category })
+      .from(transactions)
+      .where(eq(transactions.organizationId, organizationId))
+      .groupBy(transactions.description, transactions.category)
+      .having(sql`count(*) >= 2`),
   ])
+  const suggestedKeys = new Set(duplicateCombinations.map((row) => `${row.description}\u0000${row.category}`))
 
   response.json({
-    rows: rows.map((row) => ({ ...row, amount: Number(row.amount) })),
+    rows: rows.map((row) => ({ ...row, is_recurring: row.isRecurring, suggestedRecurring: suggestedKeys.has(`${row.description}\u0000${row.category}`), amount: Number(row.amount) })),
     total,
     page,
     limit,
@@ -148,6 +157,7 @@ router.patch('/:id', requireAuth, async (request, response) => {
     ...(changes.description === undefined ? {} : { description: changes.description }),
     ...(changes.amount === undefined ? {} : { amount: changes.amount.toString() }),
     ...(changes.category === undefined ? {} : { category: changes.category }),
+    ...(changes.is_recurring === undefined ? {} : { isRecurring: changes.is_recurring }),
   }
   const [updated] = await db.update(transactions).set(updateValues).where(eq(transactions.id, transactionId)).returning()
   await invalidateOrganizationSummary(organizationId)
@@ -157,9 +167,12 @@ router.patch('/:id', requireAuth, async (request, response) => {
     action: 'transaction.update',
     entityType: 'transaction',
     entityId: transactionId,
-    metadata: { changes },
+    metadata: {
+      changes,
+      ...(changes.is_recurring === undefined ? {} : { recurringFlagChange: { from: existing.isRecurring, to: changes.is_recurring } }),
+    },
   })
-  response.json({ ...updated, amount: Number(updated.amount) })
+  response.json({ ...updated, is_recurring: updated.isRecurring, amount: Number(updated.amount) })
 })
 
 router.delete('/:id', requireAuth, async (request, response) => {
