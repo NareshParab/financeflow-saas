@@ -5,7 +5,7 @@ import { app } from './app'
 import { db, pool } from './db/client'
 import { createAccessToken, hashPassword } from './auth'
 import { authRateLimit } from './middleware/authRateLimit'
-import { auditLogs, budgets, organizations, transactions, users } from './db/schema'
+import { analyticsCache, auditLogs, budgets, organizations, transactions, users } from './db/schema'
 
 const http = request(app)
 const createdOrganizationIds: number[] = []
@@ -167,6 +167,68 @@ describe('FinanceFlow integration API', () => {
 
     const orgBGuess = await http.get('/api/transactions?search=secret&organizationId=1').set('Authorization', `Bearer ${orgA.accessToken}`)
     expect(orgBGuess.body.total).toBe(0)
+  })
+
+  it('updates and deletes owned transactions, invalidates analytics, and audits both actions', async () => {
+    const orgA = await createTestUser('transaction-mutations-a')
+    const orgB = await createTestUser('transaction-mutations-b')
+    const [ownedTransaction] = await db.insert(transactions).values({
+      organizationId: orgA.organizationId,
+      date: '2026-09-08',
+      description: 'Original correction',
+      amount: '-25.00',
+      category: 'Old category',
+    }).returning()
+    const [deletedTransaction] = await db.insert(transactions).values({
+      organizationId: orgA.organizationId,
+      date: '2026-09-09',
+      description: 'To be removed',
+      amount: '-12.00',
+      category: 'Temporary',
+    }).returning()
+    const [foreignTransaction] = await db.insert(transactions).values({
+      organizationId: orgB.organizationId,
+      date: '2026-09-09',
+      description: 'Foreign transaction',
+      amount: '-99.00',
+      category: 'Private',
+    }).returning()
+    await db.insert(analyticsCache).values({ organizationId: orgA.organizationId, totalIncome: '0', totalExpenses: '37', net: '-37' })
+
+    const updated = await http
+      .patch(`/api/transactions/${ownedTransaction.id}`)
+      .set('Authorization', `Bearer ${orgA.accessToken}`)
+      .send({ amount: -45.5, category: 'Corrected' })
+    expect(updated.status).toBe(200)
+    expect(updated.body).toMatchObject({ id: ownedTransaction.id, amount: -45.5, category: 'Corrected' })
+    expect((await db.select().from(analyticsCache).where(eq(analyticsCache.organizationId, orgA.organizationId))).length).toBe(0)
+
+    const persisted = await db.select().from(transactions).where(eq(transactions.id, ownedTransaction.id))
+    expect(persisted[0]).toMatchObject({ amount: '-45.50', category: 'Corrected' })
+    const refreshedSummary = await http.get('/api/analytics/summary').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(refreshedSummary.body).toMatchObject({ totalIncome: 0, totalExpenses: 57.5, net: -57.5 })
+
+    const forbiddenUpdate = await http
+      .patch(`/api/transactions/${foreignTransaction.id}`)
+      .set('Authorization', `Bearer ${orgA.accessToken}`)
+      .send({ description: 'Should not change' })
+    const forbiddenDelete = await http
+      .delete(`/api/transactions/${foreignTransaction.id}`)
+      .set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(forbiddenUpdate.status).toBe(404)
+    expect(forbiddenDelete.status).toBe(404)
+
+    const deleted = await http.delete(`/api/transactions/${deletedTransaction.id}`).set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(deleted.status).toBe(204)
+    expect((await db.select().from(transactions).where(eq(transactions.id, deletedTransaction.id))).length).toBe(0)
+
+    const audit = await db.select().from(auditLogs).where(eq(auditLogs.organizationId, orgA.organizationId))
+    const updateAudit = audit.find((log) => log.action === 'transaction.update')
+    const deleteAudit = audit.find((log) => log.action === 'transaction.delete')
+    expect(updateAudit?.entityId).toBe(ownedTransaction.id)
+    expect(updateAudit?.metadata).toEqual({ changes: { amount: -45.5, category: 'Corrected' } })
+    expect(deleteAudit?.entityId).toBe(deletedTransaction.id)
+    expect(deleteAudit?.metadata).toMatchObject({ deleted: { description: 'To be removed', amount: -12, category: 'Temporary' } })
   })
 
   it('calculates budget spending and over-budget state from current-month transactions', async () => {

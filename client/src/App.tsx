@@ -13,7 +13,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Upload, FileText, CheckCircle, XCircle, Plus,
   Download, FileBarChart, BarChart2, ArrowRight,
-  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
+  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, Save, X,
 } from 'lucide-react'
 
 // ─── Auth pages ──────────────────────────────────────────────────────────────
@@ -886,7 +886,8 @@ function ImportPage() {
 // ─── Transactions page ───────────────────────────────────────────────────────
 
 function TransactionsPage() {
-  const { fetchTransactions, fetchAnalytics } = useAuth()
+  const { fetchTransactions, fetchAnalytics, updateTransaction, deleteTransaction } = useAuth()
+  const queryClient = useQueryClient()
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
@@ -895,6 +896,8 @@ function TransactionsPage() {
   const [page, setPage] = useState(1)
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [editing, setEditing] = useState<Transaction | null>(null)
+  const [editForm, setEditForm] = useState({ date: '', description: '', amount: '', category: '' })
   const limit = 25
 
   useEffect(() => {
@@ -919,6 +922,22 @@ function TransactionsPage() {
     queryKey: ['analytics', 'by-category'],
     queryFn: () => fetchAnalytics<CategoryData[]>('by-category'),
   })
+  const update = useMutation({
+    mutationFn: ({ id, input }: { id: number; input: { date: string; description: string; amount: number; category: string } }) => updateTransaction(id, input),
+    onSuccess: () => {
+      setEditing(null)
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void queryClient.invalidateQueries({ queryKey: ['analytics'] })
+    },
+  })
+  const remove = useMutation({
+    mutationFn: deleteTransaction,
+    onSuccess: () => {
+      if (transactions.data?.rows.length === 1 && page > 1) setPage((current) => current - 1)
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      void queryClient.invalidateQueries({ queryKey: ['analytics'] })
+    },
+  })
 
   function toggleSort(column: 'date' | 'amount') {
     if (sortBy === column) setSortOrder((current) => current === 'asc' ? 'desc' : 'asc')
@@ -938,6 +957,22 @@ function TransactionsPage() {
     setStartDate('')
     setEndDate('')
     setPage(1)
+  }
+
+  function openEdit(transaction: Transaction) {
+    setEditing(transaction)
+    setEditForm({ date: transaction.date, description: transaction.description, amount: String(transaction.amount), category: transaction.category })
+    update.reset()
+  }
+
+  function submitEdit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!editing) return
+    update.mutate({ id: editing.id, input: { ...editForm, amount: Number(editForm.amount) } })
+  }
+
+  function confirmDelete(transaction: Transaction) {
+    if (window.confirm(`Delete “${transaction.description}”? This cannot be undone.`)) remove.mutate(transaction.id)
   }
 
   return (
@@ -992,6 +1027,7 @@ function TransactionsPage() {
                   <th className="px-5 py-3">Description</th>
                   <th className="px-5 py-3"><button type="button" onClick={() => toggleSort('amount')} className="inline-flex items-center gap-1.5 hover:text-primary-700 dark:hover:text-teal-400">Amount {sortIcon('amount')}</button></th>
                   <th className="px-5 py-3">Category</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1001,6 +1037,12 @@ function TransactionsPage() {
                     <td className="px-5 py-4 text-sm font-medium text-slate-800 dark:text-slate-200">{transaction.description}</td>
                     <td className={`whitespace-nowrap px-5 py-4 text-sm font-semibold ${transaction.amount >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300'}`}>{transaction.amount >= 0 ? '+' : ''}${transaction.amount.toFixed(2)}</td>
                     <td className="px-5 py-4"><span className="badge badge-neutral">{transaction.category}</span></td>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button type="button" onClick={() => openEdit(transaction)} aria-label={`Edit ${transaction.description}`} title="Edit transaction" className="btn btn-ghost btn-icon btn-sm"><Pencil size={15} /></button>
+                        <button type="button" onClick={() => confirmDelete(transaction)} aria-label={`Delete ${transaction.description}`} title="Delete transaction" className="btn btn-ghost btn-icon btn-sm text-red-600 dark:text-red-400"><Trash2 size={15} /></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1012,6 +1054,31 @@ function TransactionsPage() {
             <span className="text-xs text-slate-400 dark:text-slate-500">{transactions.data.total === 0 ? 'No results' : `${(page - 1) * limit + 1}-${Math.min(page * limit, transactions.data.total)} of ${transactions.data.total}`}</span>
             <button type="button" onClick={() => setPage((current) => current + 1)} disabled={page >= transactions.data.totalPages || transactions.isFetching} className="btn btn-outline btn-sm">Next<ChevronRight size={15} /></button>
           </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 px-4" role="dialog" aria-modal="true" aria-labelledby="edit-transaction-title">
+          <form onSubmit={submitEdit} className="card w-full max-w-lg p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="edit-transaction-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">Edit transaction</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Update the details and save your correction.</p>
+              </div>
+              <button type="button" onClick={() => setEditing(null)} aria-label="Close edit dialog" className="btn btn-ghost btn-icon"><X size={18} /></button>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div><label htmlFor="edit-transaction-date" className="label">Date</label><input id="edit-transaction-date" type="date" required value={editForm.date} onChange={(event) => setEditForm({ ...editForm, date: event.target.value })} className="input" /></div>
+              <div><label htmlFor="edit-transaction-amount" className="label">Amount</label><input id="edit-transaction-amount" type="number" step="0.01" required value={editForm.amount} onChange={(event) => setEditForm({ ...editForm, amount: event.target.value })} className="input" /></div>
+              <div className="sm:col-span-2"><label htmlFor="edit-transaction-description" className="label">Description</label><input id="edit-transaction-description" required value={editForm.description} onChange={(event) => setEditForm({ ...editForm, description: event.target.value })} className="input" /></div>
+              <div className="sm:col-span-2"><label htmlFor="edit-transaction-category" className="label">Category</label><input id="edit-transaction-category" required value={editForm.category} onChange={(event) => setEditForm({ ...editForm, category: event.target.value })} className="input" /></div>
+            </div>
+            {update.error && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{update.error instanceof Error ? update.error.message : 'Unable to update transaction'}</p>}
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditing(null)} className="btn btn-outline">Cancel</button>
+              <button type="submit" disabled={update.isPending} className="btn btn-primary"><Save size={15} />{update.isPending ? 'Saving…' : 'Save changes'}</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

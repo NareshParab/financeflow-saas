@@ -53,6 +53,8 @@ const transactionRowSchema = z.object({
   category: z.string().trim().min(1, 'Category must not be empty'),
 })
 
+const transactionUpdateSchema = transactionRowSchema.partial().refine((value) => Object.keys(value).length > 0, 'At least one transaction field is required')
+
 const transactionListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -116,6 +118,77 @@ router.get('/import-template', requireAuth, (_request, response) => {
   response.setHeader('Content-Type', 'text/csv; charset=utf-8')
   response.setHeader('Content-Disposition', 'attachment; filename="financeflow-import-template.csv"')
   response.send(csv)
+})
+
+router.patch('/:id', requireAuth, async (request, response) => {
+  const transactionId = Number(request.params.id)
+  if (!Number.isInteger(transactionId) || transactionId < 1) {
+    response.status(404).json({ error: 'Transaction not found' })
+    return
+  }
+  const parsedBody = transactionUpdateSchema.safeParse(request.body)
+  if (!parsedBody.success) {
+    response.status(400).json({ error: parsedBody.error.issues[0]?.message ?? 'Invalid transaction update' })
+    return
+  }
+
+  const organizationId = request.user!.organizationId
+  const [existing] = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.id, transactionId), eq(transactions.organizationId, organizationId)))
+  if (!existing) {
+    response.status(404).json({ error: 'Transaction not found' })
+    return
+  }
+
+  const changes = parsedBody.data
+  const updateValues = {
+    ...(changes.date === undefined ? {} : { date: changes.date }),
+    ...(changes.description === undefined ? {} : { description: changes.description }),
+    ...(changes.amount === undefined ? {} : { amount: changes.amount.toString() }),
+    ...(changes.category === undefined ? {} : { category: changes.category }),
+  }
+  const [updated] = await db.update(transactions).set(updateValues).where(eq(transactions.id, transactionId)).returning()
+  await invalidateOrganizationSummary(organizationId)
+  await logAudit({
+    organizationId,
+    userId: request.user!.userId,
+    action: 'transaction.update',
+    entityType: 'transaction',
+    entityId: transactionId,
+    metadata: { changes },
+  })
+  response.json({ ...updated, amount: Number(updated.amount) })
+})
+
+router.delete('/:id', requireAuth, async (request, response) => {
+  const transactionId = Number(request.params.id)
+  if (!Number.isInteger(transactionId) || transactionId < 1) {
+    response.status(404).json({ error: 'Transaction not found' })
+    return
+  }
+
+  const organizationId = request.user!.organizationId
+  const [deleted] = await db
+    .delete(transactions)
+    .where(and(eq(transactions.id, transactionId), eq(transactions.organizationId, organizationId)))
+    .returning()
+  if (!deleted) {
+    response.status(404).json({ error: 'Transaction not found' })
+    return
+  }
+
+  await invalidateOrganizationSummary(organizationId)
+  await logAudit({
+    organizationId,
+    userId: request.user!.userId,
+    action: 'transaction.delete',
+    entityType: 'transaction',
+    entityId: transactionId,
+    metadata: { deleted: { date: deleted.date, description: deleted.description, amount: Number(deleted.amount), category: deleted.category } },
+  })
+  response.status(204).send()
 })
 
 router.post('/import', requireAuth, uploadCsv, async (request, response) => {
