@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   LayoutDashboard,
   Wallet,
@@ -8,10 +9,9 @@ import {
   LogOut,
   Sun,
   Moon,
-  Menu,
-  X,
   TrendingUp,
   ChevronDown,
+  FileBarChart,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext.tsx'
 import { useTheme } from '../auth/ThemeContext.tsx'
@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
   { to: '/budgets', label: 'Budgets', icon: <Wallet size={17} /> },
   { to: '/transactions/import', label: 'Import', icon: <Upload size={17} /> },
+  { to: '/reports', label: 'Reports', icon: <FileBarChart size={17} /> },
   { to: '/audit-logs', label: 'Audit Logs', icon: <ClipboardList size={17} /> },
 ]
 
@@ -95,7 +96,6 @@ function UserMenu({ email, role }: { email: string; role: string }) {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   const location = useLocation()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f1a27] flex flex-col transition-colors duration-300">
@@ -136,48 +136,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               {user && <UserMenu email={user.email} role={user.role} />}
 
-              {/* Mobile hamburger */}
-              <button
-                id="mobile-menu-toggle"
-                className="md:hidden btn btn-ghost btn-icon rounded-xl"
-                onClick={() => setMobileMenuOpen((p) => !p)}
-                aria-label="Toggle mobile menu"
-              >
-                {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-              </button>
             </div>
           </div>
         </div>
-
-        {/* Mobile dropdown menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-200 dark:border-slate-700/60 animate-slide-up">
-            <nav className="px-4 py-3 flex flex-col gap-1" aria-label="Mobile navigation">
-              {navItems.map((item) => {
-                const active = location.pathname === item.to
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    id={`mobile-nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`nav-link py-3 ${active ? 'nav-link-active' : ''}`}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-        )}
       </header>
 
       {/* Page content */}
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <div className="page-enter">
-          {children}
-        </div>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Mobile bottom tab bar */}

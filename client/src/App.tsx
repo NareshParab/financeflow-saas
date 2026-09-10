@@ -517,6 +517,72 @@ function Dashboard() {
   )
 }
 
+function ReportsPage() {
+  const { downloadFile } = useAuth()
+  const [downloading, setDownloading] = useState('')
+  const [error, setError] = useState('')
+
+  async function download(path: string) {
+    setError('')
+    setDownloading(path)
+    try {
+      await downloadFile(path)
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Download failed')
+    } finally {
+      setDownloading('')
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Reports</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Export a summary of your FinanceFlow activity.</p>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-danger-100 dark:border-danger-800/60 bg-danger-50 dark:bg-danger-900/20 px-4 py-3">
+          <XCircle size={16} className="mt-0.5 shrink-0 text-danger-600 dark:text-danger-400" />
+          <p className="text-sm text-danger-700 dark:text-danger-300">{error}</p>
+        </div>
+      )}
+
+      <section className="grid gap-4 sm:grid-cols-2" aria-label="Available reports">
+        <article className="card card-hover p-5">
+          <FileBarChart size={22} className="text-primary-700 dark:text-accent-400" />
+          <h2 className="mt-4 font-semibold text-slate-900 dark:text-slate-100">Summary PDF</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">A printable overview of income, expenses, and balance.</p>
+          <button
+            type="button"
+            onClick={() => void download('/reports/summary-pdf')}
+            disabled={downloading !== ''}
+            className="btn btn-outline mt-5"
+          >
+            <Download size={15} />
+            {downloading === '/reports/summary-pdf' ? 'Generating…' : 'Download PDF'}
+          </button>
+        </article>
+
+        <article className="card card-hover p-5">
+          <Download size={22} className="text-primary-700 dark:text-accent-400" />
+          <h2 className="mt-4 font-semibold text-slate-900 dark:text-slate-100">Transaction CSV</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">A spreadsheet-ready export of your transactions.</p>
+          <button
+            type="button"
+            onClick={() => void download('/transactions/export')}
+            disabled={downloading !== ''}
+            className="btn btn-outline mt-5"
+          >
+            <Download size={15} />
+            {downloading === '/transactions/export' ? 'Exporting…' : 'Export CSV'}
+          </button>
+        </article>
+      </section>
+    </div>
+  )
+}
+
 // ─── Budgets page ─────────────────────────────────────────────────────────────
 
 function BudgetRow({ budget }: { budget: Budget }) {
@@ -928,6 +994,7 @@ function ProtectedWithLayout() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/budgets" element={<BudgetsPage />} />
           <Route path="/transactions/import" element={<ImportPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
