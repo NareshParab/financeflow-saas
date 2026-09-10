@@ -2,6 +2,7 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import cors from 'cors'
 import express from 'express'
+import helmet from 'helmet'
 import { sql } from 'drizzle-orm'
 import { db } from './db/client'
 import { errorHandler, requestLogger } from './middleware/observability'
@@ -26,8 +27,13 @@ const allowedOrigins = (process.env.CLIENT_URL ?? 'http://localhost:5173')
   .filter(Boolean)
 
 app.use(cors({ origin: allowedOrigins, credentials: true }))
+app.use(helmet())
 app.use(requestLogger)
 app.use(express.json())
+
+app.get('/', (_request, response) => {
+  response.json({ status: 'ok', service: 'financeflow-api' })
+})
 
 app.get('/api/health', async (_request, response) => {
   try {

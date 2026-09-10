@@ -32,17 +32,19 @@ function normalizeEmail(email: string) {
 }
 
 function setRefreshCookie(response: Parameters<typeof createAccessToken>[0] extends never ? never : import('express').Response, token: string) {
+  const isProduction = process.env.NODE_ENV === 'production'
   response.cookie('financeflow_refresh_token', token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/api/auth',
   })
 }
 
 function clearRefreshCookie(response: import('express').Response) {
-  response.clearCookie('financeflow_refresh_token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/api/auth' })
+  const isProduction = process.env.NODE_ENV === 'production'
+  response.clearCookie('financeflow_refresh_token', { httpOnly: true, sameSite: 'lax', secure: isProduction, path: '/api/auth' })
 }
 
 async function tokenResponse(response: import('express').Response, user: typeof users.$inferSelect) {
