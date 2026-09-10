@@ -1,6 +1,6 @@
 import multer, { MulterError } from 'multer'
 import Papa from 'papaparse'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, lte } from 'drizzle-orm'
 import { Router } from 'express'
 import { z } from 'zod'
 import { db } from '../db/client'
@@ -51,6 +51,55 @@ const transactionRowSchema = z.object({
     z.number().finite('Amount must be a number'),
   ),
   category: z.string().trim().min(1, 'Category must not be empty'),
+})
+
+const transactionListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  search: z.string().trim().optional(),
+  category: z.string().trim().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'startDate must use YYYY-MM-DD').optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'endDate must use YYYY-MM-DD').optional(),
+  sortBy: z.enum(['date', 'amount']).default('date'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+})
+
+router.get('/', requireAuth, async (request, response) => {
+  const parsedQuery = transactionListQuerySchema.safeParse(request.query)
+  if (!parsedQuery.success) {
+    response.status(400).json({ error: parsedQuery.error.issues[0]?.message ?? 'Invalid transaction query' })
+    return
+  }
+
+  const { page, limit, search, category, startDate, endDate, sortBy, sortOrder } = parsedQuery.data
+  const organizationId = request.user!.organizationId
+  const conditions = [eq(transactions.organizationId, organizationId)]
+  if (search) conditions.push(ilike(transactions.description, `%${search}%`))
+  if (category) conditions.push(eq(transactions.category, category))
+  if (startDate) conditions.push(gte(transactions.date, startDate))
+  if (endDate) conditions.push(lte(transactions.date, endDate))
+  const where = and(...conditions)
+  const sortColumn = sortBy === 'amount' ? transactions.amount : transactions.date
+  const order = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
+
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select({ id: transactions.id, date: transactions.date, description: transactions.description, amount: transactions.amount, category: transactions.category })
+      .from(transactions)
+      .where(where)
+      .orderBy(order, sortOrder === 'asc' ? asc(transactions.id) : desc(transactions.id))
+      .limit(limit)
+      .offset((page - 1) * limit),
+    db.select({ total: count() }).from(transactions).where(where),
+  ])
+
+  response.json({
+    rows: rows.map((row) => ({ ...row, amount: Number(row.amount) })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  })
 })
 
 router.get('/import-template', requireAuth, (_request, response) => {

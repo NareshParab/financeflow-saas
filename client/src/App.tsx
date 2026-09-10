@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
-import { useAuth, type AuditLog, type Budget, type ImportResult } from './auth/AuthContext.tsx'
+import { useAuth, type AuditLog, type Budget, type ImportResult, type Transaction } from './auth/AuthContext.tsx'
 import { ProtectedRoute } from './auth/ProtectedRoute.tsx'
 import { ThemeProvider, useTheme } from './auth/ThemeContext.tsx'
 import { AppLayout, AuthLayout } from './components/Layout.tsx'
@@ -13,7 +13,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Upload, FileText, CheckCircle, XCircle, Plus,
   Download, FileBarChart, BarChart2, ArrowRight,
-  MailWarning, Clock, Shield, Activity, ClipboardList,
+  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react'
 
 // ─── Auth pages ──────────────────────────────────────────────────────────────
@@ -883,6 +883,141 @@ function ImportPage() {
   )
 }
 
+// ─── Transactions page ───────────────────────────────────────────────────────
+
+function TransactionsPage() {
+  const { fetchTransactions, fetchAnalytics } = useAuth()
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [page, setPage] = useState(1)
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const limit = 25
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(searchInput.trim())
+      setPage(1)
+    }, 300)
+    return () => window.clearTimeout(timeout)
+  }, [searchInput])
+
+  const query = new URLSearchParams({ page: String(page), limit: String(limit), sortBy, sortOrder })
+  if (search) query.set('search', search)
+  if (category) query.set('category', category)
+  if (startDate) query.set('startDate', startDate)
+  if (endDate) query.set('endDate', endDate)
+
+  const transactions = useQuery({
+    queryKey: ['transactions', query.toString()],
+    queryFn: () => fetchTransactions(`?${query.toString()}`),
+  })
+  const categories = useQuery({
+    queryKey: ['analytics', 'by-category'],
+    queryFn: () => fetchAnalytics<CategoryData[]>('by-category'),
+  })
+
+  function toggleSort(column: 'date' | 'amount') {
+    if (sortBy === column) setSortOrder((current) => current === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(column); setSortOrder('desc') }
+    setPage(1)
+  }
+
+  function sortIcon(column: 'date' | 'amount') {
+    if (sortBy !== column) return <ArrowUpDown size={13} />
+    return sortOrder === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />
+  }
+
+  function resetFilters() {
+    setSearchInput('')
+    setSearch('')
+    setCategory('')
+    setStartDate('')
+    setEndDate('')
+    setPage(1)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Transactions</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Search and review activity for your organization.</p>
+      </div>
+
+      <div className="card p-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[minmax(16rem,1.5fr)_minmax(10rem,1fr)_1fr_1fr_auto] lg:items-end">
+          <div>
+            <label htmlFor="transaction-search" className="label">Search description</label>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input id="transaction-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="e.g. groceries" className="input pl-9" />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="transaction-category" className="label">Category</label>
+            <select id="transaction-category" value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }} className="input">
+              <option value="">All categories</option>
+              {categories.data?.map((item) => <option key={item.category} value={item.category}>{item.category}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="transaction-start-date" className="label">From date</label>
+            <input id="transaction-start-date" type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); setPage(1) }} className="input" />
+          </div>
+          <div>
+            <label htmlFor="transaction-end-date" className="label">To date</label>
+            <input id="transaction-end-date" type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setPage(1) }} className="input" />
+          </div>
+          <button type="button" onClick={resetFilters} className="btn btn-ghost justify-center">Clear</button>
+        </div>
+      </div>
+
+      {transactions.isLoading && <div className="flex items-center justify-center gap-3 py-12 text-slate-400"><div className="h-5 w-5 border-2 border-slate-300 border-t-primary-700 rounded-full animate-spin" />Loading transactions…</div>}
+      {transactions.error && <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-4 py-3"><AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-500" /><p className="text-sm text-red-700 dark:text-red-300">Unable to load transactions.</p></div>}
+
+      {transactions.data && (
+        <div className="card overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+            <p className="text-sm text-slate-500 dark:text-slate-400">{transactions.data.total.toLocaleString()} transaction{transactions.data.total === 1 ? '' : 's'}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Page {transactions.data.page} of {Math.max(transactions.data.totalPages, 1)}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] text-left">
+              <thead className="border-b border-slate-200 dark:border-slate-700">
+                <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <th className="px-5 py-3"><button type="button" onClick={() => toggleSort('date')} className="inline-flex items-center gap-1.5 hover:text-primary-700 dark:hover:text-teal-400">Date {sortIcon('date')}</button></th>
+                  <th className="px-5 py-3">Description</th>
+                  <th className="px-5 py-3"><button type="button" onClick={() => toggleSort('amount')} className="inline-flex items-center gap-1.5 hover:text-primary-700 dark:hover:text-teal-400">Amount {sortIcon('amount')}</button></th>
+                  <th className="px-5 py-3">Category</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.data.rows.map((transaction: Transaction) => (
+                  <tr key={transaction.id} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-slate-700/50 dark:hover:bg-slate-700/20">
+                    <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-500 dark:text-slate-400">{transaction.date}</td>
+                    <td className="px-5 py-4 text-sm font-medium text-slate-800 dark:text-slate-200">{transaction.description}</td>
+                    <td className={`whitespace-nowrap px-5 py-4 text-sm font-semibold ${transaction.amount >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-slate-700 dark:text-slate-300'}`}>{transaction.amount >= 0 ? '+' : ''}${transaction.amount.toFixed(2)}</td>
+                    <td className="px-5 py-4"><span className="badge badge-neutral">{transaction.category}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {transactions.data.rows.length === 0 && <div className="flex flex-col items-center justify-center gap-3 py-16 text-center"><Search size={22} className="text-slate-400" /><p className="text-sm text-slate-500 dark:text-slate-400">No transactions match these filters.</p></div>}
+          <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+            <button type="button" onClick={() => setPage((current) => Math.max(current - 1, 1))} disabled={page === 1 || transactions.isFetching} className="btn btn-outline btn-sm"><ChevronLeft size={15} />Previous</button>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{transactions.data.total === 0 ? 'No results' : `${(page - 1) * limit + 1}-${Math.min(page * limit, transactions.data.total)} of ${transactions.data.total}`}</span>
+            <button type="button" onClick={() => setPage((current) => current + 1)} disabled={page >= transactions.data.totalPages || transactions.isFetching} className="btn btn-outline btn-sm">Next<ChevronRight size={15} /></button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Audit Logs page ──────────────────────────────────────────────────────────
 
 function actionIcon(action: string) {
@@ -993,6 +1128,7 @@ function ProtectedWithLayout() {
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/budgets" element={<BudgetsPage />} />
+          <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/transactions/import" element={<ImportPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />

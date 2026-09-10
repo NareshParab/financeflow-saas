@@ -134,6 +134,41 @@ describe('FinanceFlow integration API', () => {
     expect(response.body.errors[0].row).toBe(3)
   })
 
+  it('lists transactions with filters, sorting, pagination, and organization isolation', async () => {
+    const orgA = await createTestUser('transaction-list-a')
+    const orgB = await createTestUser('transaction-list-b')
+    await db.insert(transactions).values([
+      { organizationId: orgA.organizationId, date: '2026-09-01', description: 'Coffee shop', amount: '-5.00', category: 'Food' },
+      { organizationId: orgA.organizationId, date: '2026-09-02', description: 'Office supplies', amount: '-40.00', category: 'Office' },
+      { organizationId: orgA.organizationId, date: '2026-09-03', description: 'Coffee beans', amount: '-15.00', category: 'Food' },
+      { organizationId: orgA.organizationId, date: '2026-09-04', description: 'Client payment', amount: '120.00', category: 'Income' },
+    ])
+    await db.insert(transactions).values({ organizationId: orgB.organizationId, date: '2026-09-02', description: 'Coffee shop secret', amount: '-7.00', category: 'Food' })
+
+    const search = await http.get('/api/transactions?search=coffee').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(search.body.total).toBe(2)
+    expect(search.body.rows.map((row: { description: string }) => row.description)).toEqual(['Coffee beans', 'Coffee shop'])
+
+    const category = await http.get('/api/transactions?category=Food&startDate=2026-09-02&endDate=2026-09-03').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(category.body.total).toBe(1)
+    expect(category.body.rows[0]).toMatchObject({ description: 'Coffee beans', category: 'Food' })
+
+    const amountAscending = await http.get('/api/transactions?sortBy=amount&sortOrder=asc&limit=2').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(amountAscending.body.rows.map((row: { amount: number }) => row.amount)).toEqual([-40, -15])
+    const amountDescending = await http.get('/api/transactions?sortBy=amount&sortOrder=desc&limit=2').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(amountDescending.body.rows.map((row: { amount: number }) => row.amount)).toEqual([120, -5])
+
+    const firstPage = await http.get('/api/transactions?page=1&limit=2&orgId=999999').set('Authorization', `Bearer ${orgA.accessToken}`)
+    const secondPage = await http.get('/api/transactions?page=2&limit=2').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(firstPage.body.total).toBe(4)
+    expect(firstPage.body.rows).toHaveLength(2)
+    expect(secondPage.body.rows).toHaveLength(2)
+    expect(firstPage.body.rows.map((row: { id: number }) => row.id)).not.toEqual(secondPage.body.rows.map((row: { id: number }) => row.id))
+
+    const orgBGuess = await http.get('/api/transactions?search=secret&organizationId=1').set('Authorization', `Bearer ${orgA.accessToken}`)
+    expect(orgBGuess.body.total).toBe(0)
+  })
+
   it('calculates budget spending and over-budget state from current-month transactions', async () => {
     const user = await createTestUser('budget')
     const today = new Date().toISOString().slice(0, 10)

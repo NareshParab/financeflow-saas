@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   LayoutDashboard,
   Wallet,
+  ReceiptText,
   Upload,
   ClipboardList,
   LogOut,
@@ -25,6 +26,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
   { to: '/budgets', label: 'Budgets', icon: <Wallet size={17} /> },
+  { to: '/transactions', label: 'Transactions', icon: <ReceiptText size={17} /> },
   { to: '/transactions/import', label: 'Import', icon: <Upload size={17} /> },
   { to: '/reports', label: 'Reports', icon: <FileBarChart size={17} /> },
   { to: '/audit-logs', label: 'Audit Logs', icon: <ClipboardList size={17} /> },
