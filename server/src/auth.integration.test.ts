@@ -4,7 +4,7 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import { app } from './app'
 import { db, pool } from './db/client'
 import { createAccessToken, hashPassword } from './auth'
-import { authRateLimit } from './middleware/authRateLimit'
+import { AUTH_RATE_LIMIT_MAX, AUTH_RATE_LIMIT_WINDOW_MS, authRateLimit } from './middleware/authRateLimit'
 import { analyticsCache, auditLogs, budgets, organizations, transactions, users } from './db/schema'
 
 const http = request(app)
@@ -298,13 +298,16 @@ describe('FinanceFlow integration API', () => {
     expect((await agent.post('/api/auth/refresh')).status).toBe(401)
   })
 
-  it('rate-limits authentication after ten requests from one IP', async () => {
+  it('uses the recommended authentication rate limit and rejects the next request', async () => {
+    expect(AUTH_RATE_LIMIT_MAX).toBe(8)
+    expect(AUTH_RATE_LIMIT_WINDOW_MS).toBe(15 * 60 * 1000)
+
     const responses = []
-    for (let attempt = 0; attempt < 11; attempt += 1) {
+    for (let attempt = 0; attempt < AUTH_RATE_LIMIT_MAX + 1; attempt += 1) {
       responses.push(await http.post('/api/auth/login').send({ email: 'missing-rate-limit@example.com', password: 'WrongPassword123!' }))
     }
-    expect(responses.slice(0, 10).every((response) => response.status === 401)).toBe(true)
-    expect(responses[10].status).toBe(429)
-    expect(responses[10].body.error).toContain('Too many authentication attempts')
+    expect(responses.slice(0, AUTH_RATE_LIMIT_MAX).every((response) => response.status === 401)).toBe(true)
+    expect(responses[AUTH_RATE_LIMIT_MAX].status).toBe(429)
+    expect(responses[AUTH_RATE_LIMIT_MAX].body.error).toContain('Too many authentication attempts')
   })
 })

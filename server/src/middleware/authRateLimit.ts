@@ -1,10 +1,19 @@
 import rateLimit from 'express-rate-limit'
 
-export const AUTH_RATE_LIMIT_WINDOW_MS = 2 * 60 * 60 * 1000
+const DEFAULT_AUTH_RATE_LIMIT_MAX = 8
+const DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
+
+function positiveIntegerFromEnv(name: string, fallback: number) {
+  const value = Number(process.env[name])
+  return Number.isInteger(value) && value > 0 ? value : fallback
+}
+
+export const AUTH_RATE_LIMIT_MAX = positiveIntegerFromEnv('AUTH_RATE_LIMIT_MAX', DEFAULT_AUTH_RATE_LIMIT_MAX)
+export const AUTH_RATE_LIMIT_WINDOW_MS = positiveIntegerFromEnv('AUTH_RATE_LIMIT_WINDOW_MS', DEFAULT_AUTH_RATE_LIMIT_WINDOW_MS)
 
 export const authRateLimit = rateLimit({
   windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
-  limit: 10,
+  limit: AUTH_RATE_LIMIT_MAX,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   handler: (_request, response) => {
