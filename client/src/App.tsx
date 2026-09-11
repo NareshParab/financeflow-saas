@@ -13,7 +13,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Upload, FileText, CheckCircle, XCircle, Plus,
   Download, FileBarChart, BarChart2, ArrowRight,
-  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, Save, X, Repeat, Lightbulb,
+  MailWarning, Clock, Shield, Activity, ClipboardList, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, Save, X, Repeat, Lightbulb, Info, Copy, Check,
 } from 'lucide-react'
 
 // ─── Auth pages ──────────────────────────────────────────────────────────────
@@ -86,6 +86,52 @@ function AuthCard({
   )
 }
 
+function DemoCredentialsHint() {
+  const [copiedField, setCopiedField] = useState<'email' | 'password' | null>(null)
+  const credentials = {
+    email: 'financeflowdemo@gmail.com',
+    password: 'Naresh@123',
+  }
+
+  async function copyCredential(field: 'email' | 'password') {
+    try {
+      await navigator.clipboard.writeText(credentials[field])
+      setCopiedField(field)
+      window.setTimeout(() => setCopiedField(null), 1600)
+    } catch {
+      setCopiedField(null)
+    }
+  }
+
+  return (
+    <aside className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/80 p-4 dark:border-teal-800/60 dark:bg-teal-900/20" aria-label="Demo credentials">
+      <div className="flex items-start gap-3">
+        <Info size={17} className="mt-0.5 shrink-0 text-teal-700 dark:text-teal-400" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-teal-900 dark:text-teal-200">Explore with the demo account</p>
+          <p className="mt-1 text-xs text-teal-800 dark:text-teal-300">Want to explore without signing up? Use these credentials:</p>
+          <div className="mt-3 space-y-2 text-xs">
+            {(['email', 'password'] as const).map((field) => (
+              <div key={field} className="flex items-center justify-between gap-2 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-slate-900/40">
+                <span className="min-w-0 truncate font-mono text-teal-950 dark:text-teal-100">{credentials[field]}</span>
+                <button
+                  type="button"
+                  onClick={() => void copyCredential(field)}
+                  className="shrink-0 rounded-md p-1.5 text-teal-700 transition-colors hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 dark:text-teal-300 dark:hover:bg-teal-800/50"
+                  aria-label={`Copy demo ${field}`}
+                  title={`Copy demo ${field}`}
+                >
+                  {copiedField === field ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
 function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -132,6 +178,7 @@ function LoginPage() {
         <InputField id="email" label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@company.com" required />
         <InputField id="password" label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" required minLength={8} />
       </AuthCard>
+      <DemoCredentialsHint />
     </AuthLayout>
   )
 }
